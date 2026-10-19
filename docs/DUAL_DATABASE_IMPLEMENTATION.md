@@ -15,6 +15,17 @@ This document describes the code added for staged CockroachDB adoption. It is in
 
 `server/db/repositories.ts` demonstrates the intended repository pattern with the existing `pwa_prototype.pwa_prototypes` table. Future repositories should own domain SQL and return application-shaped objects; route handlers should not know which driver produced the rows.
 
+### First migrated route batch
+
+The first staged batch now uses repositories while preserving the existing response contracts:
+
+- session lookup used by `/api/auth/me`, `/api/auth/verify`, logout, and protected routes;
+- active-user lookup used by `/api/auth/login`;
+- client profile reads from `GET /api/profile`;
+- directory search from `GET /api/directory`.
+
+These are read-oriented paths, so they can be exercised in `shadow` mode before write migration. Account creation, password reset, profile writes, saved-resource mutations, and the remaining domain routes intentionally remain on the legacy MySQL pool until the write-side outbox and Cockroach schema are available.
+
 ## Parity and shadow monitoring contract
 
 `ParityMonitor` records sampled shadow queries, normalized matches, mismatches, target errors, and the last mismatch fingerprint. Normalization sorts object keys and rows, converts dates to ISO strings, and converts buffers to base64 so driver representation differences do not create false positives.
@@ -38,7 +49,7 @@ Run the snapshot only with the legacy connection configured:
 pnpm db:snapshot:mysql
 ```
 
-The script writes `db/baseline/mysql-schema.sql` and `db/baseline/mysql-schema.manifest.json`. It executes `SHOW TABLES` and `SHOW CREATE TABLE` only; it copies no row data and does not print the connection string. The snapshot is the missing foundation required before the incremental migration candidates under `db/cockroach-migrations/` can be applied.
+The script writes `db/baseline/mysql-schema.sql` and `db/baseline/mysql-schema.manifest.json`. It executes `SHOW TABLES` and `SHOW CREATE TABLE` only; it copies no row data and does not print the connection string. The snapshot is the missing foundation required before the incremental migration candidates under `db/cockroach-migrations/` can be applied. In the current sandbox run, it correctly stopped before writing because neither `LEGACY_DATABASE_URL` nor `DATABASE_URL` was configured; this prevents an empty or misleading baseline file from entering the repository.
 
 After review, translate the complete baseline and incremental deltas:
 

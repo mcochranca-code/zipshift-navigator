@@ -14,6 +14,7 @@ import { emergencyResources } from "./emergencyResources";
 import { storageGetSignedUrl, storagePut } from "./storage";
 import stanislausResources from "./data/stanislaus-resources.json";
 import { getDualDatabase } from "./db/dualDatabase";
+import { authRepository, clientProfileRepository, directoryRepository } from "./db/repositories";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -157,24 +158,17 @@ async function getSession(req: Request): Promise<SessionContext | null> {
   const sessionId = cookies[SESSION_COOKIE] || (req.headers["x-session-id"] as string | undefined);
   if (!sessionId) return null;
 
-  const [rows] = await db.query<RowDataPacket[]>(
-    `SELECT s.id, s.expires_at, u.id AS user_id, u.email, u.display_name, u.role, u.specialist_role
-     FROM app_sessions s
-     JOIN app_users u ON u.id = s.user_id
-     WHERE s.id = ? AND s.expires_at > ? AND u.is_active = TRUE`,
-    [sessionId, now()]
-  );
-
-  if (!rows[0]) return null;
+  const row = await authRepository.getSession(sessionId, now());
+  if (!row) return null;
   return {
-    id: rows[0].id,
-    expiresAt: Number(rows[0].expires_at),
+    id: row.id,
+    expiresAt: Number(row.expires_at),
     user: {
-      id: rows[0].user_id,
-      email: rows[0].email,
-      displayName: rows[0].display_name,
-      role: rows[0].role as Role,
-      specialistRole: rows[0].specialist_role || null,
+      id: row.user_id,
+      email: row.email,
+      displayName: row.display_name,
+      role: row.role as Role,
+      specialistRole: (row.specialist_role as SpecialistRole | null) || null,
     },
   };
 }
@@ -592,15 +586,11 @@ export async function createZipShiftApp() {
     const identifier = (email || username || "").trim().toLowerCase();
     if (!identifier || !password) return res.status(400).json({ error: "Email and password are required." });
 
-    const [rows] = await db.query<RowDataPacket[]>(
-      "SELECT * FROM app_users WHERE email = ? AND is_active = TRUE LIMIT 1",
-      [identifier]
-    );
-    const row = rows[0];
+    const row = await authRepository.getActiveUserByEmail(identifier);
     if (!row || !verifyPassword(password, row.password_hash)) {
       return res.status(401).json({ error: "Invalid email or password." });
     }
-    const user = userFromRow(row);
+    const user = userFromRow(row as unknown as RowDataPacket);
     await startSession(res, user.id);
     res.json({ user });
   });
@@ -653,8 +643,8 @@ export async function createZipShiftApp() {
   app.get("/api/profile", async (req, res) => {
     const session = await requireSession(req, res);
     if (!session) return;
-    const [rows] = await db.query<RowDataPacket[]>("SELECT phone, city, language, accessibility_json FROM client_profiles WHERE user_id = ?", [session.user.id]);
-    res.json({ user: session.user, profile: rows[0] ? { phone: rows[0].phone, city: rows[0].city, language: rows[0].language, accessibility: parseJson(rows[0].accessibility_json, []) } : null });
+    const row = await clientProfileRepository.getByUserId(session.user.id);
+    res.json({ user: session.user, profile: row ? { phone: row.phone, city: row.city, language: row.language, accessibility: parseJson(row.accessibility_json, []) } : null });
   });
 
   app.put("/api/profile", async (req, res) => {
@@ -705,22 +695,7 @@ export async function createZipShiftApp() {
     const search = String(req.query.search || "").trim();
     const city = String(req.query.city || "").trim();
     const category = String(req.query.category || "").trim();
-    const clauses = ["1 = 1"];
-    const params: unknown[] = [];
-    if (search) {
-      clauses.push("(name LIKE ? OR category LIKE ? OR city LIKE ? OR address LIKE ?)");
-      const like = `%${search}%`;
-      params.push(like, like, like, like);
-    }
-    if (city) {
-      clauses.push("city = ?");
-      params.push(city);
-    }
-    if (category) {
-      clauses.push("category = ?");
-      params.push(category);
-    }
-    const [rows] = await db.query<RowDataPacket[]>(`SELECT * FROM directory_resources WHERE ${clauses.join(" AND ")} ORDER BY city, name`, params);
+    const rows = await directoryRepository.search({ search, city, category });
     res.json({ resources: rows.map((row) => ({
       id: row.id, sourceId: row.source_id, name: row.name, category: row.category, city: row.city, zip: row.zip,
       canonicalProviderId: row.canonical_provider_id || null,
