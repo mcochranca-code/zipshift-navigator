@@ -1,0 +1,44 @@
+-- GENERATED CANDIDATE DDL: review before applying to CockroachDB.
+-- Source migration: 20261015_add_navigator_research_workflows.sql
+-- This file was generated offline; it does not connect to or mutate any database.
+-- Warnings are recorded in db/cockroach-migrations/manifest.json.
+CREATE TABLE IF NOT EXISTS research_participant_controls (
+  id CHAR(36) NOT NULL PRIMARY KEY,
+  study_id CHAR(36) NOT NULL,
+  case_id CHAR(36) NOT NULL,
+  pseudonym VARCHAR(80) NOT NULL,
+  enrollment_status VARCHAR(32) NOT NULL DEFAULT 'enrolled',
+  consented_at BIGINT NOT NULL,
+  withdrawn_at BIGINT NULL,
+  retention_until BIGINT NULL,
+  created_by CHAR(36) NOT NULL,
+  created_at BIGINT NOT NULL,
+  updated_at BIGINT NOT NULL,
+  UNIQUE INDEX uq_research_participant_case (study_id, case_id),
+  UNIQUE INDEX uq_research_participant_pseudonym (study_id, pseudonym),
+  INDEX idx_research_participant_study_status (study_id, enrollment_status),
+  CONSTRAINT fk_research_participant_study FOREIGN KEY (study_id) REFERENCES studies(id) ON DELETE CASCADE,
+  CONSTRAINT fk_research_participant_case FOREIGN KEY (case_id) REFERENCES referral_cases(id) ON DELETE CASCADE,
+  CONSTRAINT fk_research_participant_created_by FOREIGN KEY (created_by) REFERENCES app_users(id) ON DELETE RESTRICT
+);
+
+CREATE TABLE IF NOT EXISTS research_assessments (
+  id CHAR(36) NOT NULL PRIMARY KEY,
+  study_id CHAR(36) NOT NULL,
+  case_id CHAR(36) NOT NULL,
+  participant_control_id CHAR(36) NOT NULL,
+  instrument_key VARCHAR(40) NOT NULL,
+  instrument_version VARCHAR(40) NOT NULL,
+  response_json TEXT NOT NULL,
+  score DECIMAL(10,2) NULL,
+  status VARCHAR(24) NOT NULL DEFAULT 'complete',
+  withdrawn_at BIGINT NULL,
+  created_by CHAR(36) NOT NULL,
+  created_at BIGINT NOT NULL,
+  INDEX idx_research_assessment_participant (participant_control_id, instrument_key, created_at),
+  INDEX idx_research_assessment_study (study_id, instrument_key, created_at),
+  CONSTRAINT fk_research_assessment_study FOREIGN KEY (study_id) REFERENCES studies(id) ON DELETE CASCADE,
+  CONSTRAINT fk_research_assessment_case FOREIGN KEY (case_id) REFERENCES referral_cases(id) ON DELETE CASCADE,
+  CONSTRAINT fk_research_assessment_participant FOREIGN KEY (participant_control_id) REFERENCES research_participant_controls(id) ON DELETE CASCADE,
+  CONSTRAINT fk_research_assessment_created_by FOREIGN KEY (created_by) REFERENCES app_users(id) ON DELETE RESTRICT
+);

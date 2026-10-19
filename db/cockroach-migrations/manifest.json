@@ -1,0 +1,113 @@
+{
+  "generatedAt": "2026-10-19T23:46:36.371Z",
+  "inputDir": "server/migrations",
+  "outputDir": "db/cockroach-migrations",
+  "files": [
+    {
+      "source": "20260828_add_yellowbook_updated_by_role.sql",
+      "output": "20260828_add_yellowbook_updated_by_role.cockroach.sql",
+      "sha256": "a4c84b7875d034487abe5ca714f07f5f6b62cf585db41eaf81f4041aadfb3500",
+      "warnings": []
+    },
+    {
+      "source": "20260904_add_auth_safeguards.sql",
+      "output": "20260904_add_auth_safeguards.cockroach.sql",
+      "sha256": "491951968eebfc398f6e55935f76371f5262adae9f7a76f7c4ca93d9294ffbf6",
+      "warnings": [
+        "20260904_add_auth_safeguards.sql: CHAR(36) identifiers are preserved for compatibility; native UUID conversion is deferred"
+      ]
+    },
+    {
+      "source": "20260911_add_admin_control_center.sql",
+      "output": "20260911_add_admin_control_center.cockroach.sql",
+      "sha256": "c52886bb409be8ac66418c70b1e9e6ea14585942f227db9a12b9d1b10813bbda",
+      "warnings": []
+    },
+    {
+      "source": "20260928_add_global_editor_settings.sql",
+      "output": "20260928_add_global_editor_settings.cockroach.sql",
+      "sha256": "158539c4a4fc31d11454659ca2e80491e867bb786931da1bc1717611ab9dae59",
+      "warnings": []
+    },
+    {
+      "source": "20260930_add_study_protocol_consent_foundation.sql",
+      "output": "20260930_add_study_protocol_consent_foundation.cockroach.sql",
+      "sha256": "7bd062dd77b64edb7528c3e8a40997c1035e5052164de21ad24e0c2e2e0415ed",
+      "warnings": [
+        "20260930_add_study_protocol_consent_foundation.sql: CHAR(36) identifiers are preserved for compatibility; native UUID conversion is deferred"
+      ]
+    },
+    {
+      "source": "20261001_add_dictionary_instrument_manager.sql",
+      "output": "20261001_add_dictionary_instrument_manager.cockroach.sql",
+      "sha256": "be4c452cd64a29bb2989c045d77fb5c66522b3497a28072ce5a132bb5bd9c832",
+      "warnings": [
+        "20261001_add_dictionary_instrument_manager.sql: CHAR(36) identifiers are preserved for compatibility; native UUID conversion is deferred"
+      ]
+    },
+    {
+      "source": "20261002_add_care_coordination_portal.sql",
+      "output": "20261002_add_care_coordination_portal.cockroach.sql",
+      "sha256": "168108b7d8b27113cff01ccfdd62f9a7b0b871058a9a72051a94c95d47beb55d",
+      "warnings": [
+        "20261002_add_care_coordination_portal.sql: CHAR(36) identifiers are preserved for compatibility; native UUID conversion is deferred"
+      ]
+    },
+    {
+      "source": "20261003_add_intake_packet_library.sql",
+      "output": "20261003_add_intake_packet_library.cockroach.sql",
+      "sha256": "8e6c45ef6b64714719ee5b84b25e67b6f6be98acd383498d5cb673c85c2015ca",
+      "warnings": [
+        "20261003_add_intake_packet_library.sql: CHAR(36) identifiers are preserved for compatibility; native UUID conversion is deferred"
+      ]
+    },
+    {
+      "source": "20261005_add_esignature_canvas.sql",
+      "output": "20261005_add_esignature_canvas.cockroach.sql",
+      "sha256": "232775df853f3f8bcc8e356ceca712e919dcaf3b6b4be9f7fe55187da9497fe0",
+      "warnings": []
+    },
+    {
+      "source": "20261006_add_case_tasks_milestone_links.sql",
+      "output": "20261006_add_case_tasks_milestone_links.cockroach.sql",
+      "sha256": "32d81957d39e77091b1084b13fe7ac9ea036665b513fc8a9368790639bf2974b",
+      "warnings": [
+        "20261006_add_case_tasks_milestone_links.sql: CHAR(36) identifiers are preserved for compatibility; native UUID conversion is deferred"
+      ]
+    },
+    {
+      "source": "20261006_add_longitudinal_milestone_permissions.sql",
+      "output": "20261006_add_longitudinal_milestone_permissions.cockroach.sql",
+      "sha256": "7f5ff6fa8b76a2e34ec664e9d763771265ab1d6be7a7cda23e58c9cdf7ccef49",
+      "warnings": [
+        "20261006_add_longitudinal_milestone_permissions.sql: CHAR(36) identifiers are preserved for compatibility; native UUID conversion is deferred"
+      ]
+    },
+    {
+      "source": "20261009_add_field_test_analytics.sql",
+      "output": "20261009_add_field_test_analytics.cockroach.sql",
+      "sha256": "7a7ca953f0eb7446b48377b61257dd79c6593d89cbdc80d8e0fed48d98f86e94",
+      "warnings": []
+    },
+    {
+      "source": "20261015_add_navigator_research_workflows.sql",
+      "output": "20261015_add_navigator_research_workflows.cockroach.sql",
+      "sha256": "017a66f9c275f3e2710ed6df1f5a4a5669ea8494e707b8afd2aca74bbaff90bb",
+      "warnings": [
+        "20261015_add_navigator_research_workflows.sql: CHAR(36) identifiers are preserved for compatibility; native UUID conversion is deferred"
+      ]
+    },
+    {
+      "source": "20261016_add_consent_expiry.sql",
+      "output": "20261016_add_consent_expiry.cockroach.sql",
+      "sha256": "7d8aefaf995e761944a89f105efcea4fd2bf4f0f72a0d76d669861652570d1ca",
+      "warnings": []
+    },
+    {
+      "source": "20261016_add_scoring_and_dual_signature_controls.sql",
+      "output": "20261016_add_scoring_and_dual_signature_controls.cockroach.sql",
+      "sha256": "9004ded8809880e3ce8f6b0c1759a2c166f2f84556784900378a0ec896e2066d",
+      "warnings": []
+    }
+  ]
+}
