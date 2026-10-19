@@ -13,6 +13,7 @@ import { buildYellowBookPdf } from "../client/src/lib/yellowbookPdf";
 import { emergencyResources } from "./emergencyResources";
 import { storageGetSignedUrl, storagePut } from "./storage";
 import stanislausResources from "./data/stanislaus-resources.json";
+import { getDualDatabase } from "./db/dualDatabase";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -520,7 +521,18 @@ export async function createZipShiftApp() {
   await importDirectoryOnce();
   await seedIntakePacketLibrary();
 
-  app.get("/api/health", (_req, res) => res.json({ ok: true }));
+  app.get("/api/health", (_req, res) => res.json({ ok: true, databaseMode: getDualDatabase().mode }));
+  app.get("/api/admin/database-parity", async (req, res) => {
+    const session = await requireRole(req, res, ["admin"]);
+    if (!session) return;
+    res.json({ parity: getDualDatabase().snapshot() });
+  });
+  app.get("/api/admin/database-health", async (req, res) => {
+    const session = await requireRole(req, res, ["admin"]);
+    if (!session) return;
+    const health = await getDualDatabase().health();
+    res.json({ mode: getDualDatabase().mode, health });
+  });
 
   app.get("/api/setup/status", async (_req, res) => {
     res.json({ needsAdminSetup: !(await hasAdmin()) });

@@ -4,6 +4,7 @@
 - [`API.md`](API.md) — Express API route reference, authentication, authorization, payload conventions, and domain endpoint groups.
 - [`component-hierarchy.md`](component-hierarchy.md) — React shell, product workflows, field operations tree, state boundaries, and extension guidance.
 - [`DUAL_DATABASE_MIGRATION.md`](DUAL_DATABASE_MIGRATION.md) — 108-route dual-database refactor strategy, rollout modes, parity checks, and cutover gates.
+- [`DUAL_DATABASE_IMPLEMENTATION.md`](DUAL_DATABASE_IMPLEMENTATION.md) — adapter, repository, monitoring endpoint, dashboard, and baseline snapshot implementation notes.
 - [`architecture.mmd`](architecture.mmd) — editable Mermaid system architecture.
 - [`zipshift-architecture.puml`](zipshift-architecture.puml) — editable PlantUML component/deployment architecture.
 - [`zipshift-architecture.svg`](zipshift-architecture.svg) — vector export of the PlantUML architecture diagram.

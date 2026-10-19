@@ -12,7 +12,8 @@
     "test": "vitest run --config vitest.config.ts",
     "format": "prettier --write .",
     "db:translate-mysql": "tsx scripts/translate-mysql-migrations.ts",
-    "db:translate-mysql:check": "tsx scripts/translate-mysql-migrations.ts --check"
+    "db:translate-mysql:check": "tsx scripts/translate-mysql-migrations.ts --check",
+    "db:snapshot:mysql": "tsx scripts/snapshot-mysql-schema.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
