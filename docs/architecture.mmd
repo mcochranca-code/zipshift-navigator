@@ -1,0 +1,31 @@
+flowchart LR
+  Browser["Browser / PWA"] --> Vite["Vite + React 19\nTailwind CSS + shadcn/ui"]
+  Vite --> Router["App.tsx + Wouter\nrole-aware screen routing"]
+  Router --> Public["Client-facing flows\nresource search, consent, profile"]
+  Router --> Staff["Staff workspace\nreferrals, YellowBook, field tools"]
+  Router --> Care["Care coordination\nintake, documents, milestones, tasks"]
+  Router --> Research["Research workspace\nstudies, instruments, analytics"]
+
+  Vite --> API["Express API\nserver/index.ts"]
+  API --> Auth["Auth + session safeguards"]
+  API --> Directory["Directory + resource APIs"]
+  API --> Workflow["Referral, case, intake\nand coordination workflows"]
+  API --> ResearchAPI["Study, consent, participant\nand assessment APIs"]
+  API --> Admin["Admin pages, settings\nand audit APIs"]
+
+  API --> MySQL[("MySQL / MariaDB\nrelational application data")]
+  API --> Storage["Object storage\nprivate PDFs, signatures, files"]
+  API --> Static["dist/public\nstatic client assets"]
+
+  Migrations["server/migrations\nordered SQL migrations"] --> MySQL
+  Shared["shared/\nconstants + referral rules"] --> Vite
+  Shared --> API
+  Field["FieldOperationsContext\nlocal queue + privacy mode"] --> Staff
+  Field --> BrowserStorage["localStorage\nqueue, language, dock visibility"]
+
+  classDef client fill:#dff7f4,stroke:#159d92,color:#102f3c;
+  classDef server fill:#e8eefc,stroke:#5267a8,color:#172554;
+  classDef data fill:#fff4d6,stroke:#c98a16,color:#3b2f08;
+  class Browser,Vite,Router,Public,Staff,Care,Research,Field,BrowserStorage client;
+  class API,Auth,Directory,Workflow,ResearchAPI,Admin,Migrations,Static server;
+  class MySQL,Storage data;

@@ -1,0 +1,46 @@
+flowchart TD
+  Landing["Landing page"] --> Privacy["Privacy consent"]
+  Landing --> ResearchConsent["Research consent"]
+  Landing --> SignIn["Sign in / register"]
+
+  Privacy --> ClientPortal["Client portal"]
+  ResearchConsent --> Eligibility["Study eligibility + protocol"]
+  Eligibility --> ResearchPortal["Research participant portal"]
+  SignIn --> RoleCheck{"Role check"}
+  RoleCheck -->|staff| StaffPortal["Staff workspace"]
+  RoleCheck -->|researcher| ResearchWorkspace["Research workspace"]
+  RoleCheck -->|admin| AdminWorkspace["Admin control center"]
+
+  ClientPortal --> Search["Resource search"]
+  Search --> Results["Localized results + directory"]
+  Results --> GuidePDF["Branded printable guide\nQR + last verified date"]
+  Results --> Referral["Referral / saved resource"]
+
+  StaffPortal --> Case["Case + referral workflow"]
+  Case --> FieldTools["Floating field tools"]
+  FieldTools --> Offline["Offline queue + sync"]
+  FieldTools --> PrivacyMode["Privacy mode\npseudonymous display"]
+  Case --> Intake["Selectable intake packet"]
+  Intake --> Signatures["Client + staff e-signatures"]
+  Case --> Timeline["Milestones + tasks"]
+
+  ResearchWorkspace --> StudyConfig["Study + dictionary + instruments"]
+  StudyConfig --> Assessment["Participant assessments"]
+  Assessment --> TimelineCharts["Completion + retention charts"]
+  TimelineCharts --> Export["High-resolution report export"]
+
+  AdminWorkspace --> Audit["Audit log + role controls"]
+  ConsentGuard["Consent + role guard"] -. protects .-> ClientPortal
+  ConsentGuard -. protects .-> ResearchPortal
+  ConsentGuard -. protects .-> StaffPortal
+  ConsentGuard -. protects .-> ResearchWorkspace
+  ConsentGuard -. protects .-> AdminWorkspace
+
+  classDef entry fill:#fff4d6,stroke:#c98a16,color:#3b2f08;
+  classDef portal fill:#dff7f4,stroke:#159d92,color:#102f3c;
+  classDef workflow fill:#e8eefc,stroke:#5267a8,color:#172554;
+  classDef guard fill:#fde2e2,stroke:#b42318,color:#4a1010;
+  class Landing,Privacy,ResearchConsent,SignIn entry;
+  class ClientPortal,ResearchPortal,StaffPortal,ResearchWorkspace,AdminWorkspace portal;
+  class Search,Results,GuidePDF,Referral,Case,FieldTools,Offline,PrivacyMode,Intake,Signatures,Timeline,StudyConfig,Assessment,TimelineCharts,Export,Audit workflow;
+  class Eligibility,RoleCheck,ConsentGuard guard;

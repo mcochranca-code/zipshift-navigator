@@ -1,0 +1,116 @@
+erDiagram
+  APP_USERS ||--o{ STUDY_MEMBERSHIPS : joins
+  STUDIES ||--o{ STUDY_MEMBERSHIPS : has
+  STUDIES ||--o{ STUDY_PROTOCOL_VERSIONS : versions
+  STUDIES ||--o{ CONSENT_DOCUMENTS : defines
+  CONSENT_DOCUMENTS ||--o{ PARTICIPANT_CONSENTS : records
+  APP_USERS ||--o{ PARTICIPANT_CONSENTS : signs
+
+  STUDIES ||--o{ DATA_DICTIONARY_VERSIONS : owns
+  DATA_DICTIONARY_VERSIONS ||--o{ DATA_DICTIONARY_VARIABLES : contains
+  STUDIES ||--o{ RESEARCH_INSTRUMENTS : configures
+  RESEARCH_INSTRUMENTS ||--o{ RESEARCH_INSTRUMENT_ITEMS : contains
+  DATA_DICTIONARY_VARIABLES o|--o{ RESEARCH_INSTRUMENT_ITEMS : references
+  STUDIES ||--o{ RESEARCH_PARTICIPANT_CONTROLS : scopes
+  REFERRAL_CASES ||--o{ RESEARCH_PARTICIPANT_CONTROLS : tracks
+  RESEARCH_PARTICIPANT_CONTROLS ||--o{ RESEARCH_ASSESSMENTS : receives
+  STUDIES ||--o{ RESEARCH_ASSESSMENTS : scopes
+  REFERRAL_CASES ||--o{ RESEARCH_ASSESSMENTS : anchors
+
+  REFERRAL_CASES ||--o{ CASE_MILESTONES : has
+  CASE_MILESTONES ||--o{ CASE_TASKS : groups
+  REFERRAL_CASES ||--o{ CASE_TASKS : contains
+  REFERRAL_CASES ||--o{ CARE_COORDINATION_DOCUMENTS : stores
+  CARE_COORDINATION_DOCUMENTS ||--o{ CARE_DOCUMENT_SIGNATURES : requires
+  REFERRAL_CASES ||--o{ CARE_TEAM_HANDOFFS : hands_off
+
+  INTAKE_PACKET_FORMS ||--o{ INTAKE_PACKETS : selected_in
+  REFERRAL_CASES ||--o{ INTAKE_PACKETS : receives
+  INTAKE_PACKETS ||--o{ INTAKE_PACKET_ITEMS : contains
+  INTAKE_PACKET_FORMS ||--o{ INTAKE_PACKET_ITEMS : supplies
+  REFERRAL_CASES ||--o{ CASE_DOCUMENT_FILES : stores
+  CASE_DOCUMENT_FILES ||--o{ CASE_DOCUMENT_FILE_SIGNATURES : requires
+  CASE_DOCUMENT_FILES ||--o{ CASE_DOCUMENT_AUDIT_EVENTS : audits
+  INTAKE_PACKETS ||--o{ CASE_DOCUMENT_AUDIT_EVENTS : audits
+
+  APP_USERS ||--o{ ADMIN_AUDIT_LOG : creates
+  APP_USERS ||--o{ FIELD_TEST_EVENTS : emits
+  APP_USERS ||--o{ PASSWORD_RESET_TOKENS : requests
+
+  APP_USERS {
+    char36 id PK
+    varchar role
+    varchar specialist_role
+    varchar email
+  }
+  STUDIES {
+    char36 id PK
+    char36 owner_user_id FK
+    varchar name
+    varchar status
+  }
+  REFERRAL_CASES {
+    char36 id PK
+    char36 study_id FK
+    char36 protocol_version_id FK
+    varchar status
+    varchar assigned_team
+  }
+  CONSENT_DOCUMENTS {
+    char36 id PK
+    char36 study_id FK
+    bigint expires_at
+    varchar version
+  }
+  PARTICIPANT_CONSENTS {
+    char36 id PK
+    char36 study_id FK
+    char36 participant_user_id FK
+    char36 consent_document_id FK
+  }
+  RESEARCH_INSTRUMENTS {
+    char36 id PK
+    char36 study_id FK
+    text scoring_rules_json
+  }
+  RESEARCH_PARTICIPANT_CONTROLS {
+    char36 id PK
+    char36 study_id FK
+    char36 case_id FK
+    varchar retention_status
+  }
+  RESEARCH_ASSESSMENTS {
+    char36 id PK
+    char36 participant_control_id FK
+    char36 case_id FK
+    varchar instrument_code
+  }
+  CARE_COORDINATION_DOCUMENTS {
+    char36 id PK
+    char36 case_id FK
+    text required_signer_roles_json
+  }
+  CASE_DOCUMENT_FILES {
+    char36 id PK
+    char36 case_id FK
+    char36 packet_form_id FK
+    varchar storage_key
+  }
+  CASE_MILESTONES {
+    char36 id PK
+    char36 case_id FK
+    varchar status
+    datetime due_at
+  }
+  CASE_TASKS {
+    char36 id PK
+    char36 case_id FK
+    char36 milestone_id FK
+    varchar status
+  }
+  FIELD_TEST_EVENTS {
+    varchar36 id PK
+    varchar event_name
+    varchar pseudonymous_session
+    datetime created_at
+  }
