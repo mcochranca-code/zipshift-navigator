@@ -1,0 +1,60 @@
+name: Feature request
+description: Propose a focused improvement to ZipShift Navigator.
+title: "feat: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: Who is affected, in which role flow, and what is difficult today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe the smallest useful behavior, including success, empty, error, and offline states where relevant.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Product area
+      options:
+        - Client resource discovery
+        - Staff workspace
+        - Field operations/offline queue
+        - Care coordination/intake
+        - Research workspace
+        - Admin control center
+        - API/database
+        - Accessibility/localization
+        - Documentation/developer experience
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: List testable outcomes.
+      placeholder: |
+        - [ ] ...
+        - [ ] ...
+    validations:
+      required: true
+  - type: textarea
+    id: considerations
+    attributes:
+      label: Privacy, consent, retention, or migration considerations
+      description: Note whether the change affects permissions, consent, protected data, storage, audit history, or schema migrations.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Scope checks
+      options:
+        - label: I searched existing issues and did not find a duplicate.
+          required: true
+        - label: This request is scoped to one coherent product improvement.
+          required: true

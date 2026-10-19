@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability or exposed credential
+    url: https://github.com/mcochranca-code/zipshift-navigator/security/advisories/new
+    about: Do not open a public issue for vulnerabilities, credentials, tokens, or private data.
+  - name: Project documentation
+    url: https://github.com/mcochranca-code/zipshift-navigator/tree/main/docs
+    about: Read the API, architecture, database, and component documentation first.

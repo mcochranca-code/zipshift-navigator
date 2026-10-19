@@ -1,0 +1,66 @@
+name: Bug report
+description: Report a reproducible defect in ZipShift Navigator.
+title: "bug: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please do not include client, participant, provider, credential, signed-URL, or production database data. Use synthetic examples and redact screenshots.
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: Describe the observed behavior and the expected behavior.
+      placeholder: The field-tools dock ...
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Include the role, route, inputs, and exact sequence needed to reproduce the issue.
+      placeholder: |
+        1. Sign in as a synthetic staff user
+        2. Open ...
+        3. Select ...
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: Browser, OS, commit SHA, and deployment/preview URL if applicable
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      options:
+        - Client resource discovery
+        - Staff workspace
+        - Field operations/offline queue
+        - Care coordination/intake
+        - Research workspace
+        - Admin control center
+        - API/database
+        - Accessibility/localization
+        - Build/deployment
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Logs or screenshots
+      description: Paste redacted logs or attach synthetic screenshots. Remove tokens, personal data, document URLs, and identifiers.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Safety checks
+      options:
+        - label: I removed secrets and sensitive personal, client, participant, or provider data.
+          required: true
+        - label: I searched existing issues and did not find a duplicate.
+          required: true
