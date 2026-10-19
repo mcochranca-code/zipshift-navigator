@@ -1,0 +1,226 @@
+@startuml ZipShiftArchitecture
+left to right direction
+
+skinparam shadowing false
+skinparam linetype ortho
+skinparam componentStyle rectangle
+skinparam packageStyle rectangle
+skinparam defaultFontName Arial
+skinparam wrapWidth 220
+skinparam maxMessageSize 180
+skinparam ArrowColor #475569
+skinparam ComponentBorderColor #0f766e
+skinparam ComponentBackgroundColor #f0fdfa
+skinparam PackageBorderColor #64748b
+skinparam PackageBackgroundColor #f8fafc
+skinparam DatabaseBorderColor #1d4ed8
+skinparam DatabaseBackgroundColor #eff6ff
+skinparam NodeBorderColor #334155
+skinparam NodeBackgroundColor #f8fafc
+skinparam CloudBorderColor #7c3aed
+skinparam CloudBackgroundColor #f5f3ff
+
+hide stereotype
+
+title ZipShift Navigator — Application Architecture
+
+actor "Client / resident" as Client
+actor "Admin partner" as Admin
+actor "Researcher" as Researcher
+actor "Care-team specialist" as CareTeam
+
+node "Browser / installable PWA" as Browser {
+  package "React 19 + Vite client" as Frontend {
+    package "Application shell" as Shell {
+      component "App.tsx\nErrorBoundary" as App
+      component "FieldOperationsProvider\nprivacy, language, offline queue" as FieldContext
+      component "FieldOperationsDock\nfield tools and hide/show state" as FieldDock
+      component "ThemeProvider + TooltipProvider\nToaster" as Providers
+      component "Wouter Router\n/ and /404" as Router
+    }
+
+    package "Public navigator flows\nHome.tsx composition" as PublicFlows {
+      component "GuidedAccess\nprogressive guided entry" as GuidedAccess
+      component "ZipShiftMap\nLeaflet map, filters, directions" as Map
+      component "ClientDirectory + resource directories\ncounty / emergency / canonical" as Directory
+      component "ReferralDestinationFlow\nAOR, access feedback, handoff" as ReferralFlow
+      component "IntakeFormFlow\nprivacy, consent, PDF export" as Intake
+      component "ClientProfile + saved resources\nReferralHistory + Notifications" as ClientFeatures
+    }
+
+    package "Role and staff portals" as StaffFlows {
+      component "RolePortal\nclient / admin / researcher / care team" as RolePortal
+      component "StaffWorkspace\nprotected role shell" as StaffWorkspace
+      component "AdminDashboard + AdminControlCenter\nusers, pages, global settings" as AdminUI
+      component "ResearcherAnalytics + ResearchDataManager\nstudies, participants, exports" as ResearchUI
+      component "CareCoordinationPortal + SpecialistDashboard\ncaseload, handoffs, tasks" as CareUI
+      component "YellowBookEncounter\nencounter timeline and PDF" as YellowBook
+      component "IntakePacketLibrary + SignatureCanvas\nsecure forms and documents" as DocumentsUI
+      component "ReferralsDispatch + StaffIntakeFlow\noperations queue" as DispatchUI
+      component "LongitudinalMilestonePanel\ncase milestones and audit" as MilestonesUI
+    }
+
+    package "Field operations" as FieldFlows {
+      component "OfflineIndicator + PrivacyModeToggle" as FieldStatus
+      component "BeforeYouGo / Transit / SOAP /\nShareReferral / ShiftHandoff modals" as FieldModals
+    }
+
+    package "Shared UI and client utilities" as ClientShared {
+      component "shadcn/ui + Radix primitives" as UI
+      component "auth.ts + utils + hooks" as ClientUtils
+      component "yellowbookPdf.ts\nclient-side PDF builder" as PdfBuilder
+      artifact "providers.json\nstatic provider seed data" as ProviderSeed
+    }
+  }
+}
+
+node "Vite dev server :3000\nstatic assets + /api proxy" as Vite
+node "Express application\nserver/index.ts\nAPI :3001 / production dist/index.js" as Api {
+  package "API domains" as ApiDomains {
+    component "Auth and sessions\n/setup/*, /auth/*, /profile/*" as AuthApi
+    component "Navigator and client\n/directory, /providers, /intake,\n/saved-resources, /notifications" as NavigatorApi
+    component "Cases and referrals\n/cases/*, /staff/cases,\n/navigator-events, /yellowbook/*" as CasesApi
+    component "Care portal\n/documents, files, signatures,\nmilestones, tasks, handoffs" as CareApi
+    component "Research and admin\n/studies, consent, dictionaries,\ninstruments, participant controls" as ResearchApi
+    component "Reports and analytics\n/analytics, /reports, ZIP demand,\nfield-test events and exports" as ReportsApi
+    component "CMS and runtime\n/global-settings, /pages, /health" as RuntimeApi
+  }
+  component "Domain helpers\nauthUtils, workflowRules, zipAnalytics" as DomainHelpers
+  component "storage.ts\npresigned document storage" as StorageAdapter
+  component "Static host + error handler\nexpress.static + SPA fallback" as StaticHost
+}
+
+cloud "Managed object storage\ncase PDFs, signatures, uploaded files\nshort-lived signed URLs" as ObjectStorage
+
+database "Managed MySQL database" as MySQL {
+  package "Identity and access" as IdentityData {
+    database "app_users\napp_sessions\npassword_reset_tokens" as IdentityTables
+  }
+  package "Navigator and case records" as CaseData {
+    database "client_profiles\nreferral_cases\ncase_events\nnotifications\nsaved resources" as CaseTables
+    database "directory / resource records\nplus JSON provider sources" as DirectoryData
+  }
+  package "Care coordination" as CareData {
+    database "care_coordination_documents\ncase_document_files\ncase_document_audit_events" as DocumentTables
+    database "care_document_signatures\ncase_milestones\ncase_tasks\ncare_team_handoffs\ncase_milestone_audit_events" as CareTables
+  }
+  package "Research and consent" as ResearchData {
+    database "studies\nstudy_protocol_versions\nstudy_memberships" as StudyTables
+    database "consent_documents\nparticipant_consents\nresearch_participant_controls\nresearch_assessments" as ResearchTables
+    database "data_dictionary_versions\ndata_dictionary_variables\nresearch_instruments\nresearch_instrument_items" as InstrumentTables
+  }
+  package "Configuration and audit" as AdminData {
+    database "admin_global_settings\nadmin_global_setting_revisions\nadmin_pages\nadmin_audit_log" as AdminTables
+    database "field_test_events" as FieldAnalyticsTables
+  }
+}
+
+folder "server/migrations/*.sql\nordered schema evolution" as Migrations
+folder "dist/public\ncompiled Vite client" as StaticAssets
+
+' External actors and browser entry points
+Client --> Browser : browse / guided access
+Admin --> Browser : protected admin workspace
+Researcher --> Browser : protected research workspace
+CareTeam --> Browser : specialist workspace
+Browser --> Vite : development HTML, JS, CSS
+Browser --> Api : production requests / static shell
+Vite --> Api : proxy /api/* to :3001
+Api --> StaticAssets : serve SPA assets in production
+
+' Client component hierarchy
+App --> FieldContext : wraps app
+App --> Providers : supplies theme, tooltips, toasts
+App --> Router : mounts routes
+Router --> PublicFlows : Home destination
+Router --> RolePortal : workspace / portal states
+App --> FieldDock : persistent field tools
+FieldContext --> FieldFlows : shared offline/privacy state
+FieldFlows --> FieldContext : read/write local queue
+PublicFlows --> PublicFlows : screen/state transitions in Home.tsx
+PublicFlows --> ClientShared : UI, hooks, PDF and static provider data
+RolePortal --> StaffFlows : selects role destination
+StaffWorkspace --> AdminUI : admin sections
+StaffWorkspace --> ResearchUI : research sections
+StaffWorkspace --> CareUI : care-team sections
+StaffWorkspace --> YellowBook : encounter section
+StaffWorkspace --> DocumentsUI : intake packet and signature sections
+StaffWorkspace --> DispatchUI : dispatch and intake sections
+StaffWorkspace --> MilestonesUI : longitudinal progress section
+FieldDock --> FieldFlows : renders operational modals and status
+
+' Frontend-to-API boundaries
+GuidedAccess --> NavigatorApi : guided access and resource events
+Map --> NavigatorApi : directory, providers, coverage, feedback
+Directory --> NavigatorApi : resource search and detail data
+ReferralFlow --> NavigatorApi : intake, referral, AOR and feedback
+Intake --> AuthApi : profile/session/consent
+ClientFeatures --> AuthApi : profile and session
+ClientFeatures --> NavigatorApi : saved resources, cases, notifications
+AdminUI --> AuthApi : staff session
+AdminUI --> CasesApi : cases, YellowBook, user actions
+AdminUI --> ResearchApi : admin research configuration
+ResearchUI --> ResearchApi : participant and assessment workflows
+ResearchUI --> ReportsApi : exports and analytics
+CareUI --> CareApi : documents, tasks, milestones, handoffs
+YellowBook --> CasesApi : encounter CRUD, events and PDF export
+DocumentsUI --> CareApi : packet assembly, file upload, signatures
+DispatchUI --> CasesApi : staff intake and referral dispatch
+MilestonesUI --> CareApi : milestone queue and audit
+PublicFlows ..> ReportsApi : ZIP search / field-test events
+
+' Express internals
+ApiDomains --> DomainHelpers : authorization and validation
+CasesApi --> StorageAdapter : PDFs and signatures
+CareApi --> StorageAdapter : uploads, signed downloads
+Api --> AuthApi
+Api --> NavigatorApi
+Api --> CasesApi
+Api --> CareApi
+Api --> ResearchApi
+Api --> ReportsApi
+Api --> RuntimeApi
+Api --> StaticHost
+
+' Persistence and external storage
+AuthApi --> IdentityTables : sessions and roles
+NavigatorApi --> CaseTables : profiles, saved resources, referrals
+NavigatorApi --> DirectoryData : directory/provider data
+CasesApi --> CaseTables : cases, events, notifications
+CareApi --> DocumentTables : case documents and audit
+CareApi --> CareTables : milestones, tasks, handoffs
+ResearchApi --> StudyTables : study/protocol membership
+ResearchApi --> ResearchTables : consent, participants, assessments
+ResearchApi --> InstrumentTables : dictionaries and instruments
+ReportsApi --> FieldAnalyticsTables : aggregate field events
+RuntimeApi --> AdminTables : settings, pages, audit
+StorageAdapter --> ObjectStorage : presign PUT/GET
+Migrations --> MySQL : apply idempotent SQL migrations
+Api --> MySQL : mysql2/promise pool via DATABASE_URL
+
+' Shared modules and build/runtime relationships
+ClientUtils ..> AuthApi : fetch credentials and parse responses
+PdfBuilder ..> YellowBook : browser PDF output
+PdfBuilder ..> CasesApi : shared PDF builder imported by server export path
+ProviderSeed ..> NavigatorApi : fallback/static provider seed
+
+note right of Api
+Single Express service owns:
+* authentication and role gates
+* client, staff, care and research APIs
+* PDF generation and secure file orchestration
+* production SPA serving
+end note
+
+note bottom of FieldContext
+Offline behavior is client-side: queued mutations and privacy/language
+preferences use localStorage; the queue is flushed when the browser returns online.
+end note
+
+note bottom of Migrations
+The archive contains source-controlled SQL migrations for auth safeguards,
+YellowBook attribution, care coordination, intake packets, e-signatures,
+milestones/tasks, field analytics, research workflows and consent controls.
+end note
+
+@enduml
