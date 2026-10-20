@@ -7,6 +7,7 @@ import { ThemeProvider } from "./contexts/ThemeContext";
 import Home from "./pages/Home";
 import FieldOperationsDock from "./components/field/FieldOperationsDock";
 import { FieldOperationsProvider } from "./components/field/FieldOperationsContext";
+import { Analytics } from "@vercel/analytics/react";
 
 
 function Router() {
@@ -37,6 +38,7 @@ function App() {
             <Toaster />
             <Router />
             <FieldOperationsDock />
+            <Analytics />
           </TooltipProvider>
         </ThemeProvider>
       </FieldOperationsProvider>
