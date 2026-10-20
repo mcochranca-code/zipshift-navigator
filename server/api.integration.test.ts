@@ -83,11 +83,26 @@ describeWithDatabase("ZipShift API workflows", () => {
     expect(intake.status).toBe(201);
     caseId = (await intake.json() as { caseId: string }).caseId;
 
+    expect((await request("/api/events", { method: "POST", body: JSON.stringify({ caseId, eventType: "CLIENT_PROFILE_UPDATED" }) })).status).toBe(401);
+    expect((await request("/api/events", { method: "POST", headers: { cookie: clientCookie }, body: JSON.stringify({ caseId, eventType: "UNSUPPORTED_EVENT" }) })).status).toBe(400);
+    const clientEvent = await request("/api/events", { method: "POST", headers: { cookie: clientCookie }, body: JSON.stringify({ caseId, eventType: "CLIENT_PROFILE_UPDATED", eventData: { source: "integration-test" }, note: "Client profile refreshed." }) });
+    expect(clientEvent.status).toBe(201);
+
     const feedback = await request("/api/feedback", { method: "POST", headers: { cookie: clientCookie }, body: JSON.stringify({ caseId, accessRating: "not_easy", barriers: ["Hours", "Transit"], narrative: "The first visit required a second trip." }) });
     expect(feedback.status).toBe(201);
     const events = await request(`/api/cases/${caseId}/events`, { headers: { cookie: clientCookie } });
     expect(events.status).toBe(200);
     await expect(events.json()).resolves.toMatchObject({ events: expect.arrayContaining([expect.objectContaining({ eventType: "ACCESS_FEEDBACK_SUBMITTED" })]) });
+    const firstPage = await request(`/api/cases/${caseId}/events?limit=1`, { headers: { cookie: clientCookie } });
+    expect(firstPage.status).toBe(200);
+    const firstPageBody = await firstPage.json() as { events: Array<{ eventType: string; createdAt: number }>; nextCursor: string | null };
+    expect(firstPageBody.events).toHaveLength(1);
+    if (firstPageBody.nextCursor) {
+      const secondPage = await request(`/api/cases/${caseId}/events?limit=1&cursor=${encodeURIComponent(firstPageBody.nextCursor)}`, { headers: { cookie: clientCookie } });
+      expect(secondPage.status).toBe(200);
+      const secondPageBody = await secondPage.json() as { events: Array<{ eventType: string; createdAt: number }> };
+      expect(secondPageBody.events[0]?.createdAt).toBeGreaterThanOrEqual(firstPageBody.events[0].createdAt);
+    }
     const notifications = await request("/api/notifications", { headers: { cookie: clientCookie } });
     expect(notifications.status).toBe(200);
     await expect(notifications.json()).resolves.toMatchObject({ notifications: expect.arrayContaining([expect.objectContaining({ title: "Access feedback recorded" })]) });

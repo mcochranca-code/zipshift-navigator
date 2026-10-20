@@ -15,6 +15,9 @@ import { storageGetSignedUrl, storagePut } from "./storage";
 import stanislausResources from "./data/stanislaus-resources.json";
 import { getDualDatabase } from "./db/dualDatabase";
 import { authRepository, clientProfileRepository, directoryRepository } from "./db/repositories";
+import { withMySqlTransaction } from "./db/transactions";
+import { parseCaseEventInput } from "./caseEvents";
+import { decodeEventCursor, encodeEventCursor, parseLimit } from "./pagination";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -210,6 +213,14 @@ async function requireRole(req: Request, res: Response, roles: Role[]): Promise<
     return null;
   }
   return session;
+}
+
+async function canAccessCase(session: SessionContext, caseId: string, action: "read" | "write") {
+  const [rows] = await db.query<RowDataPacket[]>("SELECT id, client_id FROM referral_cases WHERE id = ? LIMIT 1", [caseId]);
+  const record = rows[0];
+  if (!record) return false;
+  if (session.user.role === "client") return record.client_id === session.user.id;
+  return action === "read" || session.user.role === "admin" || session.user.role === "researcher";
 }
 
 async function hasStudyAccess(session: SessionContext, studyId: string) {
@@ -974,20 +985,41 @@ export async function createZipShiftApp() {
   app.get("/api/cases/:caseId/events", async (req, res) => {
     const session = await requireSession(req, res);
     if (!session) return;
-    const clientOnly = session.user.role === "client";
-    const [rows] = await db.query<RowDataPacket[]>(
-      `SELECT e.event_type, e.note, e.created_at
-       FROM case_events e
-       JOIN referral_cases c ON c.id = e.case_id
-       WHERE e.case_id = ? ${clientOnly ? "AND c.client_id = ?" : ""}
-       ORDER BY e.created_at ASC`,
-      clientOnly ? [req.params.caseId, session.user.id] : [req.params.caseId]
-    );
-    if (clientOnly && !rows.length) {
-      const [caseRows] = await db.query<RowDataPacket[]>("SELECT id FROM referral_cases WHERE id = ? AND client_id = ? LIMIT 1", [req.params.caseId, session.user.id]);
-      if (!caseRows[0]) return res.status(404).json({ error: "Referral not found." });
+    if (!(await canAccessCase(session, req.params.caseId, "read"))) return res.status(404).json({ error: "Referral not found." });
+
+    const paginated = req.query.limit !== undefined || req.query.cursor !== undefined;
+    if (!paginated) {
+      const [rows] = await db.query<RowDataPacket[]>(
+        `SELECT e.event_type, e.note, e.created_at
+         FROM case_events e
+         WHERE e.case_id = ?
+         ORDER BY e.created_at ASC, e.id ASC`,
+        [req.params.caseId]
+      );
+      return res.json({ events: rows.map((row) => ({ eventType: row.event_type, note: row.note || null, createdAt: Number(row.created_at) })) });
     }
-    res.json({ events: rows.map((row) => ({ eventType: row.event_type, note: row.note || null, createdAt: Number(row.created_at) })) });
+
+    const limit = parseLimit(req.query.limit, 50, 100);
+    const cursor = req.query.cursor === undefined ? null : decodeEventCursor(req.query.cursor);
+    if (req.query.cursor !== undefined && !cursor) return res.status(400).json({ error: "Invalid or expired cursor." });
+    const params: Array<string | number> = [req.params.caseId];
+    const after = cursor ? " AND (e.created_at > ? OR (e.created_at = ? AND e.id > ?))" : "";
+    if (cursor) params.push(cursor.createdAt, cursor.createdAt, cursor.id);
+    params.push(limit + 1);
+    const [rows] = await db.query<RowDataPacket[]>(
+      `SELECT e.id, e.event_type, e.note, e.created_at
+       FROM case_events e
+       WHERE e.case_id = ?${after}
+       ORDER BY e.created_at ASC, e.id ASC
+       LIMIT ?`,
+      params
+    );
+    const page = rows.slice(0, limit);
+    const last = page.at(-1);
+    return res.json({
+      events: page.map((row) => ({ eventType: row.event_type, note: row.note || null, createdAt: Number(row.created_at) })),
+      nextCursor: rows.length > limit && last ? encodeEventCursor({ version: 1, sort: "created_at,id:asc", createdAt: Number(last.created_at), id: String(last.id) }) : null,
+    });
   });
 
   app.get("/api/staff/cases", async (req, res) => {
@@ -1974,14 +2006,43 @@ export async function createZipShiftApp() {
   });
 
   app.post("/api/events", async (req, res) => {
-    const session = await getSession(req);
-    const { caseId, eventType, eventData, note } = req.body as { caseId?: string; eventType?: string; eventData?: Record<string, unknown>; note?: string };
-    if (!caseId || !eventType) return res.status(400).json({ error: "caseId and eventType are required." });
-    await db.execute(
-      "INSERT INTO case_events (id, case_id, actor_user_id, event_type, event_data_json, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-      [randomUUID(), caseId, session?.user.id || null, eventType, JSON.stringify(eventData || {}), note || null, now()]
-    );
-    res.status(201).json({ success: true });
+    const session = await requireSession(req, res);
+    if (!session) return;
+    const input = parseCaseEventInput(req.body);
+    if (!input) return res.status(400).json({ error: "Invalid case event payload." });
+    if (!(await canAccessCase(session, input.caseId, "write"))) return res.status(404).json({ error: "Case not found." });
+
+    try {
+      const result = await withMySqlTransaction(db, async (connection) => {
+        if (input.idempotencyKey) {
+          const [existing] = await connection.query<RowDataPacket[]>(
+            "SELECT event_id FROM case_event_idempotency WHERE actor_user_id = ? AND idempotency_key = ? LIMIT 1",
+            [session.user.id, input.idempotencyKey]
+          );
+          if (existing[0]) return { eventId: String(existing[0].event_id), replayed: true };
+        }
+
+        const eventId = randomUUID();
+        await connection.execute(
+          "INSERT INTO case_events (id, case_id, actor_user_id, event_type, event_data_json, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+          [eventId, input.caseId, session.user.id, input.eventType, JSON.stringify(input.eventData), input.note || null, now()]
+        );
+        if (input.idempotencyKey) {
+          await connection.execute(
+            "INSERT INTO case_event_idempotency (id, actor_user_id, idempotency_key, case_id, event_id, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+            [randomUUID(), session.user.id, input.idempotencyKey, input.caseId, eventId, now()]
+          );
+        }
+        return { eventId, replayed: false };
+      });
+      res.status(result.replayed ? 200 : 201).json({ success: true, ...result });
+    } catch (error: any) {
+      if (error?.code === "ER_DUP_ENTRY" && input.idempotencyKey) {
+        const [existing] = await db.query<RowDataPacket[]>("SELECT event_id FROM case_event_idempotency WHERE actor_user_id = ? AND idempotency_key = ? LIMIT 1", [session.user.id, input.idempotencyKey]);
+        if (existing[0]) return res.status(200).json({ success: true, eventId: String(existing[0].event_id), replayed: true });
+      }
+      throw error;
+    }
   });
 
   const staticPath = process.env.NODE_ENV === "production" ? path.resolve(__dirname, "public") : path.resolve(__dirname, "..", "dist", "public");

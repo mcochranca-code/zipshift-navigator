@@ -76,6 +76,10 @@ Consent records are not a substitute for authorization. Consent, role, study mem
 
 Case mutation clients should treat server state as authoritative. When a field mutation is queued offline, retain the operation type, stable entity ID, minimal payload, and retry status; never queue credentials or private document contents in an analytics event.
 
+`GET /cases/:caseId/events` preserves the legacy `{ events }` response when no pagination parameters are supplied. Clients may pass `limit=1..100` and an opaque `cursor` to receive `{ events, nextCursor }`. Cursor traversal is ordered by `created_at ASC, id ASC`; clients must treat cursors as opaque and restart from the beginning when a cursor is invalid or expired.
+
+`POST /events` requires an authenticated session and case access. The server accepts only the documented event taxonomy, bounds structured event data and notes, and supports an optional `idempotencyKey` for offline retries. A replay with the same actor and key returns the original event ID without creating a second timeline event.
+
 ## YellowBook and staff reports
 
 | Method | Route | Purpose |

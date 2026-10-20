@@ -4,6 +4,22 @@ ZipShift Navigator is a role-aware community-resource, referral, care-coordinati
 
 The application is designed for teams that need to move from resource discovery to referral follow-up without losing privacy, auditability, accessibility, or study-specific controls. Client-facing screens, staff workflows, researcher tools, and admin controls share the same visual system and route shell.
 
+## Documentation and implementation map
+
+Use this table of contents to find the architecture diagrams, API contract, migration plan, implementation code, and test coverage from the application landing page.
+
+| Area | Primary links | Implementation pointers |
+| --- | --- | --- |
+| Getting started | [Local development](#local-development), [API surface](#api-surface) | [`package.json`](package.json), [`vitest.config.ts`](vitest.config.ts) |
+| Architecture | [PlantUML source](docs/zipshift-architecture.puml), [SVG architecture export](docs/zipshift-architecture.svg), [Mermaid architecture](docs/architecture.mmd) | [`server/index.ts`](server/index.ts), [`server/db/dualDatabase.ts`](server/db/dualDatabase.ts) |
+| API and data model | [API reference](docs/API.md), [data-model/API review](docs/data-model-and-api-review.md), [database schema](docs/database-schema.mmd) | [`server/caseEvents.ts`](server/caseEvents.ts), [`server/pagination.ts`](server/pagination.ts) |
+| Performance and security | [Implementation plan](docs/performance-security-compliance-implementation-plan.md), [security/user journeys](docs/user-journeys.mmd) | [`server/db/transactions.ts`](server/db/transactions.ts), [`server/pagination.test.ts`](server/pagination.test.ts), [`server/db/transactions.test.ts`](server/db/transactions.test.ts) |
+| Database migrations | [Migration strategy](docs/DUAL_DATABASE_MIGRATION.md), [migration guide](server/migrations/README.md) | [`server/migrations/20261019_add_cursor_indexes_and_event_idempotency.sql`](server/migrations/20261019_add_cursor_indexes_and_event_idempotency.sql), [`scripts/migrate-cursor-indexes.ts`](scripts/migrate-cursor-indexes.ts), [`scripts/translate-mysql-migrations.ts`](scripts/translate-mysql-migrations.ts) |
+| Security-hardened events | [API event contract](docs/API.md#case-and-notification-endpoints), [implementation plan](docs/performance-security-compliance-implementation-plan.md#5-apievents-hardening-plan) | [`/api/events`](server/index.ts), [`server/caseEvents.ts`](server/caseEvents.ts), [`server/caseEvents.test.ts`](server/caseEvents.test.ts) |
+| Test coverage | [Contribution and validation guidance](.github/CONTRIBUTING.md) | [`server/api.integration.test.ts`](server/api.integration.test.ts), [`server/pagination.db.integration.test.ts`](server/pagination.db.integration.test.ts), [`server/db/dualDatabase.test.ts`](server/db/dualDatabase.test.ts) |
+
+The documentation index is [`docs/README.md`](docs/README.md). The implementation proposal includes composite-index SQL, signed cursor pagination, `/api/events` authorization and idempotency, transaction patterns, research/compliance controls, and the FHIR-ready schema plan.
+
 ## Current verification status
 
 This repository includes the field-tools visibility update. The floating Field tools dock now has bilingual accessible Hide and Show controls, persists its visibility preference in `localStorage`, and closes open field panels when hidden.
@@ -12,11 +28,11 @@ This repository includes the field-tools visibility update. The floating Field t
 | --- | --- |
 | Dependency installation | `pnpm install --frozen-lockfile` passed |
 | TypeScript | `pnpm run check` passed |
-| Automated tests | 38 passed, 2 skipped across 11 test files |
+| Automated tests | 53 passed, 3 skipped across 16 test files |
 | Production build | `pnpm run build` passed |
 | Static preview | HTTP 200 for `/` and `/__manus__/version.json` |
 
-The combined local API preview requires MySQL/MariaDB. In the source-validation environment no local database was running, so the frontend and production build were verified independently from the API integration environment.
+The combined local API preview and the optional database load/integration tests require MySQL/MariaDB. In the source-validation environment no local database was running, so those three database-dependent tests were skipped while the frontend, production build, compiler, unit tests, cursor stress fixture, and migration dry-run were verified independently.
 
 ## Product capabilities
 
