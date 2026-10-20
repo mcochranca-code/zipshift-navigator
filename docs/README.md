@@ -11,6 +11,7 @@
 - [`database-schema.mmd`](database-schema.mmd) — editable Mermaid entity relationship diagram.
 - [`user-journeys.mmd`](user-journeys.mmd) — editable Mermaid user and security journey diagram.
 - [`data-model-and-api-review.md`](data-model-and-api-review.md) — detailed data relationships plus Express security and performance recommendations.
+- [`performance-security-compliance-implementation-plan.md`](performance-security-compliance-implementation-plan.md) — composite-index and cursor-pagination migrations, `/api/events` hardening, transaction patterns, research compliance controls, and FHIR-ready schema planning.
 - [`../.github/CONTRIBUTING.md`](../.github/CONTRIBUTING.md) — setup, coding, testing, migration, privacy, and pull-request expectations.
 - [`../server/migrations/README.md`](../server/migrations/README.md) — ordered migration guidance.
 - [`../db/cockroach-migrations/README.md`](../db/cockroach-migrations/README.md) — generated Cockroach DDL candidate review and baseline-schema warning.
