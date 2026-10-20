@@ -15,7 +15,7 @@ Use this table of contents to find the architecture diagrams, API contract, migr
 | API and data model | [API reference](docs/API.md), [data-model/API review](docs/data-model-and-api-review.md), [database schema](docs/database-schema.mmd) | [`server/caseEvents.ts`](server/caseEvents.ts), [`server/pagination.ts`](server/pagination.ts) |
 | Performance and security | [Implementation plan](docs/performance-security-compliance-implementation-plan.md), [security/user journeys](docs/user-journeys.mmd) | [`server/db/transactions.ts`](server/db/transactions.ts), [`server/pagination.test.ts`](server/pagination.test.ts), [`server/db/transactions.test.ts`](server/db/transactions.test.ts) |
 | Database migrations | [Migration strategy](docs/DUAL_DATABASE_MIGRATION.md), [migration guide](server/migrations/README.md) | [`server/migrations/20261019_add_cursor_indexes_and_event_idempotency.sql`](server/migrations/20261019_add_cursor_indexes_and_event_idempotency.sql), [`scripts/migrate-cursor-indexes.ts`](scripts/migrate-cursor-indexes.ts), [`scripts/translate-mysql-migrations.ts`](scripts/translate-mysql-migrations.ts) |
-| Security-hardened events | [API event contract](docs/API.md#case-and-notification-endpoints), [implementation plan](docs/performance-security-compliance-implementation-plan.md#5-apievents-hardening-plan) | [`/api/events`](server/index.ts), [`server/caseEvents.ts`](server/caseEvents.ts), [`server/caseEvents.test.ts`](server/caseEvents.test.ts) |
+| Security-hardened events | [API event contract](docs/API.md#generic-case-event-ingestion), [implementation plan](docs/performance-security-compliance-implementation-plan.md#5-apievents-hardening-plan) | [`/api/events`](server/index.ts), [`server/caseEvents.ts`](server/caseEvents.ts), [`server/caseEvents.test.ts`](server/caseEvents.test.ts) |
 | Test coverage | [Contribution and validation guidance](.github/CONTRIBUTING.md) | [`server/api.integration.test.ts`](server/api.integration.test.ts), [`server/pagination.db.integration.test.ts`](server/pagination.db.integration.test.ts), [`server/db/dualDatabase.test.ts`](server/db/dualDatabase.test.ts) |
 
 The documentation index is [`docs/README.md`](docs/README.md). The implementation proposal includes composite-index SQL, signed cursor pagination, `/api/events` authorization and idempotency, transaction patterns, research/compliance controls, and the FHIR-ready schema plan.
@@ -47,6 +47,7 @@ This repository includes the field-tools visibility update. The floating Field t
 | Dependency installation | `pnpm install --frozen-lockfile` passed |
 | TypeScript | `pnpm run check` passed |
 | Automated tests | 53 passed, 3 skipped across 16 test files |
+| Focused cursor/transaction suite | 12 passed, 3 database-dependent tests skipped; 50,000-event cursor fixture completed within the 1-second test budget |
 | Production build | `pnpm run build` passed |
 | Static preview | HTTP 200 for `/` and `/__manus__/version.json` |
 
