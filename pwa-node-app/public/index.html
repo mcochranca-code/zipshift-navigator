@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Zipshift PWA prototype database dashboard">
+  <title>Zipshift · PWA Prototype Dashboard</title>
+  <style>
+    :root { --ink:#10233f; --muted:#70809a; --line:#e3eaf3; --surface:#fff; --bg:#f4f7fb; --accent:#2c6bed; --accent-soft:#eaf1ff; --green:#16845b; --shadow:0 18px 50px rgba(22,48,89,.08); }
+    * { box-sizing:border-box; }
+    body { margin:0; color:var(--ink); background:var(--bg); font:15px/1.5 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    .shell { display:grid; grid-template-columns:240px 1fr; min-height:100vh; }
+    aside { padding:28px 20px; background:#10233f; color:#d9e5f7; }
+    .brand { display:flex; align-items:center; gap:11px; margin:0 8px 44px; color:#fff; font-weight:750; letter-spacing:-.02em; }
+    .mark { display:grid; place-items:center; width:31px; height:31px; border-radius:9px; color:#10233f; background:#8bd5ff; font-size:13px; font-weight:900; }
+    nav a { display:block; margin:5px 0; padding:11px 12px; border-radius:9px; color:#9fb4d1; text-decoration:none; }
+    nav a.active, nav a:hover { color:#fff; background:rgba(255,255,255,.1); }
+    .side-note { position:absolute; bottom:28px; width:194px; padding:14px; border:1px solid rgba(255,255,255,.12); border-radius:12px; color:#9fb4d1; font-size:12px; }
+    main { padding:35px clamp(22px, 5vw, 68px); max-width:1420px; width:100%; }
+    .topbar { display:flex; justify-content:space-between; align-items:center; gap:20px; margin-bottom:31px; }
+    .eyebrow { margin:0 0 5px; color:var(--accent); font-size:12px; font-weight:800; letter-spacing:.11em; text-transform:uppercase; }
+    h1 { margin:0; font-size:clamp(25px, 3vw, 35px); letter-spacing:-.04em; }
+    .refresh { border:1px solid var(--line); border-radius:9px; padding:10px 14px; color:var(--ink); background:var(--surface); cursor:pointer; font-weight:650; }
+    .refresh:hover { border-color:#b9cbea; }
+    .stats { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:27px; }
+    .stat, .panel { border:1px solid var(--line); border-radius:14px; background:var(--surface); box-shadow:var(--shadow); }
+    .stat { padding:20px; }
+    .stat-label { color:var(--muted); font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; }
+    .stat-value { margin-top:8px; font-size:28px; font-weight:780; letter-spacing:-.04em; }
+    .content { display:grid; grid-template-columns:1.65fr 1fr; gap:18px; }
+    .panel { padding:22px; }
+    .panel-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; }
+    h2 { margin:0; font-size:17px; letter-spacing:-.02em; }
+    .pill { padding:5px 9px; border-radius:99px; color:var(--green); background:#e6f7ef; font-size:11px; font-weight:800; }
+    .table-wrap { overflow-x:auto; }
+    table { width:100%; border-collapse:collapse; }
+    th { padding:0 10px 11px; color:var(--muted); font-size:11px; letter-spacing:.08em; text-align:left; text-transform:uppercase; }
+    td { padding:15px 10px; border-top:1px solid var(--line); vertical-align:top; }
+    td:first-child { font-weight:750; }
+    .description { max-width:300px; color:var(--muted); font-size:13px; }
+    .status { display:inline-flex; padding:4px 8px; border-radius:99px; color:#87651a; background:#fff6d9; font-size:11px; font-weight:800; text-transform:capitalize; }
+    .slug { color:var(--accent); font:12px ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .empty, .error { padding:30px 0; color:var(--muted); text-align:center; }
+    .chart { display:flex; flex-direction:column; gap:17px; }
+    .bar-row { display:grid; grid-template-columns:108px 1fr 28px; align-items:center; gap:10px; color:var(--muted); font-size:13px; }
+    .bar-track { height:10px; overflow:hidden; border-radius:99px; background:#edf1f7; }
+    .bar { height:100%; border-radius:inherit; background:linear-gradient(90deg, #2c6bed, #76b7ff); }
+    .footnote { margin-top:17px; color:var(--muted); font-size:12px; }
+    @media (max-width: 900px) { .shell { display:block; } aside { padding:16px; } .brand { margin-bottom:16px; } nav { display:flex; gap:4px; overflow:auto; } nav a { white-space:nowrap; } .side-note { display:none; } main { padding:28px 18px; } .stats { grid-template-columns:repeat(2,1fr); } .content { grid-template-columns:1fr; } }
+    @media (max-width: 560px) { .topbar { align-items:flex-start; flex-direction:column; } .stats { grid-template-columns:1fr 1fr; gap:10px; } .stat { padding:14px; } .stat-value { font-size:23px; } }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside>
+      <div class="brand"><span class="mark">Z</span><span>Zipshift</span></div>
+      <nav aria-label="Primary navigation">
+        <a class="active" href="/">Overview</a>
+        <a href="#prototypes">Prototypes</a>
+        <a href="#status">Status</a>
+      </nav>
+      <div class="side-note">Live view<br><strong>pwa_prototype</strong><br>Connected to CockroachDB Cloud</div>
+    </aside>
+    <main>
+      <header class="topbar">
+        <div><p class="eyebrow">Product workspace</p><h1>PWA prototype dashboard</h1></div>
+        <button class="refresh" id="refresh" type="button">Refresh data</button>
+      </header>
+      <section class="stats" aria-label="Summary statistics">
+        <article class="stat"><div class="stat-label">Total prototypes</div><div class="stat-value" id="total">—</div></article>
+        <article class="stat"><div class="stat-label">Drafts</div><div class="stat-value" id="drafts">—</div></article>
+        <article class="stat"><div class="stat-label">Versions</div><div class="stat-value" id="versions">—</div></article>
+        <article class="stat"><div class="stat-label">API status</div><div class="stat-value" id="api-status">—</div></article>
+      </section>
+      <section class="content">
+        <article class="panel" id="prototypes">
+          <div class="panel-head"><h2>Prototype registry</h2><span class="pill" id="updated">Loading</span></div>
+          <div class="table-wrap"><table><thead><tr><th>Name</th><th>Description</th><th>Status</th><th>Version</th></tr></thead><tbody id="rows"><tr><td colspan="4" class="empty">Loading prototype records…</td></tr></tbody></table></div>
+        </article>
+        <article class="panel" id="status">
+          <div class="panel-head"><h2>Release readiness</h2><span class="pill">Live</span></div>
+          <div class="chart" id="chart"></div>
+          <p class="footnote">Status distribution is calculated from the records returned by <code>/api/prototypes</code>.</p>
+        </article>
+      </section>
+    </main>
+  </div>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const escapeHtml = (value) => String(value ?? '').replace(/[&<>'"]/g, (c) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;' }[c]));
+    async function loadDashboard() {
+      $('updated').textContent = 'Loading';
+      try {
+        const response = await fetch('/api/prototypes');
+        if (!response.ok) throw new Error('Request failed');
+        const { data } = await response.json();
+        const statuses = data.reduce((map, item) => { map[item.status] = (map[item.status] || 0) + 1; return map; }, {});
+        const versions = new Set(data.map((item) => item.version)).size;
+        $('total').textContent = data.length;
+        $('drafts').textContent = statuses.draft || 0;
+        $('versions').textContent = versions;
+        $('api-status').textContent = 'OK';
+        $('updated').textContent = 'Updated now';
+        $('rows').innerHTML = data.length ? data.map((item) => `<tr><td>${escapeHtml(item.name)}<br><span class="slug">${escapeHtml(item.slug)}</span></td><td class="description">${escapeHtml(item.description)}</td><td><span class="status">${escapeHtml(item.status)}</span></td><td>${escapeHtml(item.version)}</td></tr>`).join('') : '<tr><td colspan="4" class="empty">No prototype records found.</td></tr>';
+        $('chart').innerHTML = Object.entries(statuses).map(([status, count]) => `<div class="bar-row"><span>${escapeHtml(status)}</span><div class="bar-track"><div class="bar" style="width:${Math.max(8, count / data.length * 100)}%"></div></div><strong>${count}</strong></div>`).join('') || '<div class="empty">No status data available.</div>';
+      } catch (error) {
+        $('api-status').textContent = 'Error'; $('updated').textContent = 'Unavailable';
+        $('rows').innerHTML = '<tr><td colspan="4" class="error">Could not load prototype records. Check the API and database connection.</td></tr>';
+        $('chart').innerHTML = '<div class="error">Dashboard data is unavailable.</div>';
+      }
+    }
+    $('refresh').addEventListener('click', loadDashboard);
+    loadDashboard();
+  </script>
+</body>
+</html>
