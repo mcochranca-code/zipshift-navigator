@@ -1,0 +1,77 @@
+@startuml ZipShiftApiDomainArchitecture
+left to right direction
+skinparam shadowing false
+skinparam componentStyle rectangle
+skinparam packageStyle rectangle
+skinparam defaultFontName Arial
+skinparam ArrowColor #475569
+skinparam ComponentBorderColor #0f766e
+skinparam ComponentBackgroundColor #f0fdfa
+skinparam PackageBorderColor #64748b
+skinparam PackageBackgroundColor #f8fafc
+skinparam DatabaseBorderColor #1d4ed8
+skinparam DatabaseBackgroundColor #eff6ff
+skinparam CloudBorderColor #7c3aed
+skinparam CloudBackgroundColor #f5f3ff
+hide stereotype
+
+title ZipShift Navigator — Express API Domains
+
+node "Browser / React client" as Browser
+node "Express application\nserver/index.ts" as Api {
+  package "Cross-cutting guards" as Guards {
+    component "Session + role checks\nrequireSession / requireRole" as Auth
+    component "Case / study access checks" as Access
+    component "Zod payload validation\nsize and taxonomy bounds" as Validation
+    component "Signed cursor utility" as Cursor
+    component "withMySqlTransaction" as Transaction
+  }
+
+  package "API domains" as Domains {
+    component "Auth / setup / profile" as AuthApi
+    component "Navigator / directory / providers\nintake / saved resources" as NavigatorApi
+    component "Cases / referrals / events\nstaff cases / YellowBook" as CasesApi
+    component "Care portal\ndocuments / signatures / tasks / handoffs" as CareApi
+    component "Research / consent / instruments\nparticipants / assessments" as ResearchApi
+    component "Analytics / reports / field events" as ReportsApi
+    component "Admin / pages / settings / health" as AdminApi
+  }
+
+  component "storage.ts\npresigned file operations" as Storage
+  component "Static host + SPA fallback" as StaticHost
+}
+
+database "MySQL / MariaDB" as MySQL
+cloud "Private object storage" as ObjectStorage
+
+Browser --> Api : /api/* + production shell
+Api --> AuthApi
+Api --> NavigatorApi
+Api --> CasesApi
+Api --> CareApi
+Api --> ResearchApi
+Api --> ReportsApi
+Api --> AdminApi
+Domains --> Guards : authorization + validation
+CasesApi --> Cursor : event timeline pages
+CasesApi --> Transaction : event writes + idempotency
+CareApi --> Storage
+CasesApi --> Storage : PDFs / signatures
+Storage --> ObjectStorage : signed PUT / GET
+AuthApi --> MySQL
+NavigatorApi --> MySQL
+CasesApi --> MySQL
+CareApi --> MySQL
+ResearchApi --> MySQL
+ReportsApi --> MySQL
+AdminApi --> MySQL
+Api --> StaticHost : express.static + fallback
+
+note right of CasesApi
+GET /cases/:caseId/events
+uses stable (created_at, id) cursors.
+POST /events requires session,
+case access, allowlisted event type,
+and optional idempotencyKey.
+end note
+@enduml

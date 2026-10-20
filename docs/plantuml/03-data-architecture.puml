@@ -1,0 +1,99 @@
+@startuml ZipShiftDataArchitecture
+left to right direction
+skinparam shadowing false
+skinparam componentStyle rectangle
+skinparam packageStyle rectangle
+skinparam defaultFontName Arial
+skinparam ArrowColor #475569
+skinparam DatabaseBorderColor #1d4ed8
+skinparam DatabaseBackgroundColor #eff6ff
+skinparam PackageBorderColor #64748b
+skinparam PackageBackgroundColor #f8fafc
+hide stereotype
+
+title ZipShift Navigator — Logical Data Architecture
+
+database "MySQL / MariaDB" as DB {
+  package "Identity and access" as Identity {
+    database "app_users" as Users
+    database "app_sessions" as Sessions
+    database "password_reset_tokens" as Resets
+    database "admin_audit_log" as Audit
+  }
+
+  package "Navigator and case records" as Cases {
+    database "client_profiles" as Profiles
+    database "referral_cases" as ReferralCases
+    database "case_events" as Events
+    database "case_event_idempotency" as Idempotency
+    database "notifications" as Notifications
+    database "saved_resources" as Saved
+  }
+
+  package "Care coordination" as Care {
+    database "care_coordination_documents" as Documents
+    database "case_document_files" as Files
+    database "care_document_signatures" as Signatures
+    database "case_milestones" as Milestones
+    database "case_tasks" as Tasks
+    database "care_team_handoffs" as Handoffs
+    database "case_document_audit_events" as DocAudit
+  }
+
+  package "Research and consent" as Research {
+    database "studies + protocols" as Studies
+    database "study_memberships" as Memberships
+    database "consent_documents" as ConsentDocs
+    database "participant_consents" as Consents
+    database "research_participant_controls" as Participants
+    database "research_assessments" as Assessments
+    database "research_instruments + dictionary" as Instruments
+  }
+
+  package "Configuration and analytics" as Config {
+    database "admin_global_settings\nadmin_pages" as Settings
+    database "field_test_events" as FieldEvents
+    database "directory / resource records" as Directory
+  }
+}
+
+Users --> Sessions : authenticates
+Users --> Profiles : owns
+Users --> Memberships : joins
+Users --> Audit : acts
+Profiles --> ReferralCases : owns
+ReferralCases --> Events : records
+Users --> Events : authors
+Events --> Idempotency : replay key
+ReferralCases --> Notifications : produces
+Users --> Saved : saves
+
+ReferralCases --> Documents : has
+Documents --> Files : contains
+Documents --> Signatures : requires
+Documents --> DocAudit : audits
+ReferralCases --> Milestones : tracks
+Milestones --> Tasks : groups
+ReferralCases --> Handoffs : coordinates
+
+Studies --> Memberships : scopes
+Studies --> ConsentDocs : defines
+ConsentDocs --> Consents : records
+Studies --> Participants : scopes
+ReferralCases --> Participants : links
+Participants --> Assessments : receives
+Studies --> Instruments : configures
+
+note right of Idempotency
+Unique (actor_user_id, idempotency_key)
+prevents duplicate offline retries.
+case_events uses (case_id, created_at, id)
+for keyset pagination.
+end note
+
+note bottom of DB
+All domains evolve through ordered SQL migrations.
+The focused cursor/index migration adds the composite
+browse indexes and event retry ledger.
+end note
+@enduml

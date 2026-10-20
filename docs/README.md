@@ -8,6 +8,11 @@
 - [`architecture.mmd`](architecture.mmd) — editable Mermaid system architecture.
 - [`zipshift-architecture.puml`](zipshift-architecture.puml) — editable PlantUML component/deployment architecture.
 - [`zipshift-architecture.svg`](zipshift-architecture.svg) — vector export of the PlantUML architecture diagram.
+- [`plantuml/01-client-architecture.puml`](plantuml/01-client-architecture.puml) / [`01-client-architecture.svg`](plantuml/01-client-architecture.svg) — React shell, role portals, and offline field operations.
+- [`plantuml/02-api-domain-architecture.puml`](plantuml/02-api-domain-architecture.puml) / [`02-api-domain-architecture.svg`](plantuml/02-api-domain-architecture.svg) — Express API domains and cross-cutting guards.
+- [`plantuml/03-data-architecture.puml`](plantuml/03-data-architecture.puml) / [`03-data-architecture.svg`](plantuml/03-data-architecture.svg) — logical data groups, relationships, idempotency, and pagination indexes.
+- [`plantuml/04-security-event-flow.puml`](plantuml/04-security-event-flow.puml) / [`04-security-event-flow.svg`](plantuml/04-security-event-flow.svg) — authenticated `/api/events` lifecycle and transaction behavior.
+- [`plantuml/05-runtime-deployment.puml`](plantuml/05-runtime-deployment.puml) / [`05-runtime-deployment.svg`](plantuml/05-runtime-deployment.svg) — development, production, storage, database, and migration runtime boundaries.
 - [`database-schema.mmd`](database-schema.mmd) — editable Mermaid entity relationship diagram.
 - [`user-journeys.mmd`](user-journeys.mmd) — editable Mermaid user and security journey diagram.
 - [`data-model-and-api-review.md`](data-model-and-api-review.md) — detailed data relationships plus Express security and performance recommendations.

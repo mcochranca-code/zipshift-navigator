@@ -1,0 +1,66 @@
+@startuml ZipShiftSecurityEventFlow
+
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam ArrowColor #475569
+skinparam ActivityBorderColor #0f766e
+skinparam ActivityBackgroundColor #f0fdfa
+skinparam DiamondBorderColor #7c3aed
+skinparam DiamondBackgroundColor #f5f3ff
+skinparam NoteBackgroundColor #fffbeb
+skinparam NoteBorderColor #d97706
+
+title ZipShift Navigator — Authenticated Case Event Lifecycle
+
+start
+:Browser sends POST /api/events;
+:Parse session cookie;
+if (Authenticated?) then (no)
+  :Return 401 Unauthorized;
+  stop
+else (yes)
+endif
+:Validate caseId, eventType, eventData, note;
+if (Payload valid and allowlisted?) then (no)
+  :Return 400 Invalid case event payload;
+  stop
+else (yes)
+endif
+:Load referral case by caseId;
+if (Case exists and actor has case access?) then (no)
+  :Return 404 Case not found;
+  stop
+else (yes)
+endif
+
+if (idempotencyKey supplied?) then (yes)
+  :Lookup actor + idempotencyKey;
+  if (Existing event?) then (yes)
+    :Return 200 with original eventId;
+    stop
+  else (no)
+  endif
+else (no)
+endif
+
+:Begin MySQL transaction;
+:Insert case_events row;
+if (idempotencyKey supplied?) then (yes)
+  :Insert case_event_idempotency row;
+else (no)
+endif
+:Commit transaction;
+:Return 201 with eventId;
+
+note right
+Event data is bounded by depth,
+entry count, string size, note length,
+and a fixed event taxonomy.
+end note
+
+note right
+On a database error, rollback is attempted,
+the connection is released, and the original
+error is propagated to the Express handler.
+end note
+@enduml

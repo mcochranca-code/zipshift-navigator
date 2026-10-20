@@ -1,0 +1,64 @@
+@startuml ZipShiftRuntimeDeployment
+left to right direction
+skinparam shadowing false
+skinparam componentStyle rectangle
+skinparam packageStyle rectangle
+skinparam defaultFontName Arial
+skinparam ArrowColor #475569
+skinparam ComponentBorderColor #0f766e
+skinparam ComponentBackgroundColor #f0fdfa
+skinparam DatabaseBorderColor #1d4ed8
+skinparam DatabaseBackgroundColor #eff6ff
+skinparam CloudBorderColor #7c3aed
+skinparam CloudBackgroundColor #f5f3ff
+skinparam FolderBorderColor #64748b
+skinparam FolderBackgroundColor #f8fafc
+hide stereotype
+
+title ZipShift Navigator — Runtime and Deployment
+
+node "Developer machine" as Dev {
+  component "Vite dev server\n:3000" as Vite
+  component "Express API\n:3001" as DevApi
+  folder "client/src\nReact + Vite source" as ClientSource
+  folder "server\nExpress + TypeScript" as ServerSource
+  folder "server/migrations/*.sql" as Migrations
+  component "tsx / Vitest / TypeScript" as Tooling
+}
+
+node "Production application host" as Prod {
+  component "dist/index.js\nExpress process" as ProdApi
+  folder "dist/public\ncompiled SPA assets" as Static
+}
+
+database "Managed MySQL / MariaDB" as DB
+cloud "Private object storage" as Storage
+actor "Browser / PWA" as Browser
+
+Browser --> Vite : local development
+Vite --> DevApi : proxy /api/*
+ClientSource --> Vite : build and HMR
+ServerSource --> DevApi : tsx runtime
+Tooling --> ClientSource : test / compile
+Tooling --> ServerSource : test / compile
+Migrations --> DB : ordered migration apply
+
+Browser --> ProdApi : HTTPS /api/*
+ProdApi --> Static : serve SPA + fallback
+ProdApi --> DB : DATABASE_URL pool
+ProdApi --> Storage : signed file URLs
+ServerSource --> Prod : build / bundle
+ClientSource --> Static : Vite production build
+
+note right of DB
+The cursor/index migration is applied
+before enabling cursor pagination and
+idempotent event retries in production.
+end note
+
+note bottom of ProdApi
+One Express service owns API domains,
+static hosting, authentication, storage
+orchestration, and error handling.
+end note
+@enduml

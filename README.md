@@ -20,6 +20,24 @@ Use this table of contents to find the architecture diagrams, API contract, migr
 
 The documentation index is [`docs/README.md`](docs/README.md). The implementation proposal includes composite-index SQL, signed cursor pagination, `/api/events` authorization and idempotency, transaction patterns, research/compliance controls, and the FHIR-ready schema plan.
 
+## Featured PlantUML architecture
+
+[![ZipShift Navigator application architecture](docs/zipshift-architecture.svg)](docs/zipshift-architecture.svg)
+
+The diagram above is the canonical large-scale system map. It shows how the React/Vite PWA, Express API domains, MySQL data groups, private object storage, ordered migrations, and runtime assets fit together. The editable source is [`docs/zipshift-architecture.puml`](docs/zipshift-architecture.puml); the SVG is committed so the architecture can be reviewed directly in GitHub without a local PlantUML installation.
+
+The large map is intentionally supported by smaller diagrams, each focused on one boundary:
+
+| Focus | What it explains | PlantUML source | Rendered SVG |
+| --- | --- | --- | --- |
+| Client | React shell, public navigator flows, role portals, offline field operations, and local storage | [`01-client-architecture.puml`](docs/plantuml/01-client-architecture.puml) | [`01-client-architecture.svg`](docs/plantuml/01-client-architecture.svg) |
+| API domains | Express route groups, authorization guards, cursor pagination, transactions, storage, and database boundaries | [`02-api-domain-architecture.puml`](docs/plantuml/02-api-domain-architecture.puml) | [`02-api-domain-architecture.svg`](docs/plantuml/02-api-domain-architecture.svg) |
+| Data | Identity, cases, care coordination, research, audit, event idempotency, and keyset-pagination relationships | [`03-data-architecture.puml`](docs/plantuml/03-data-architecture.puml) | [`03-data-architecture.svg`](docs/plantuml/03-data-architecture.svg) |
+| Security and events | Authenticated `/api/events` lifecycle, validation, case access, idempotency, commit, and rollback behavior | [`04-security-event-flow.puml`](docs/plantuml/04-security-event-flow.puml) | [`04-security-event-flow.svg`](docs/plantuml/04-security-event-flow.svg) |
+| Runtime and deployment | Development proxy, production Express/static serving, database, object storage, migrations, and build outputs | [`05-runtime-deployment.puml`](docs/plantuml/05-runtime-deployment.puml) | [`05-runtime-deployment.svg`](docs/plantuml/05-runtime-deployment.svg) |
+
+Read the large diagram from the outside in: actors enter through the browser, the client routes work into Express domain APIs, cross-cutting guards protect the request, and domain services persist to grouped data tables or private object storage. Then use the focused views when reviewing a specific implementation boundary or planning a change.
+
 ## Current verification status
 
 This repository includes the field-tools visibility update. The floating Field tools dock now has bilingual accessible Hide and Show controls, persists its visibility preference in `localStorage`, and closes open field panels when hidden.

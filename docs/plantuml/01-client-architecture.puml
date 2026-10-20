@@ -1,0 +1,98 @@
+@startuml ZipShiftClientArchitecture
+left to right direction
+skinparam shadowing false
+skinparam componentStyle rectangle
+skinparam packageStyle rectangle
+skinparam defaultFontName Arial
+skinparam ArrowColor #475569
+skinparam ComponentBorderColor #0f766e
+skinparam ComponentBackgroundColor #f0fdfa
+skinparam PackageBorderColor #64748b
+skinparam PackageBackgroundColor #f8fafc
+hide stereotype
+
+title ZipShift Navigator — Client Architecture
+
+actor "Client / resident" as Client
+actor "Staff / admin / researcher / care team" as Staff
+
+node "Browser / installable PWA" as Browser {
+  package "React 19 + Vite" as React {
+    component "App.tsx\nErrorBoundary" as App
+    component "Wouter Router\nroute and role gates" as Router
+    component "Theme + tooltip + toaster\nproviders" as Providers
+
+    package "Public navigator flows" as Public {
+      component "GuidedAccess" as Guided
+      component "ZipShiftMap\nLeaflet + filters" as Map
+      component "Directory and resource flows" as Directory
+      component "ReferralDestinationFlow\nAOR + feedback + handoff" as Referral
+      component "IntakeFormFlow\nprivacy + consent + PDF" as Intake
+      component "ClientProfile\nnotifications + saved resources" as Profile
+    }
+
+    package "Role portals" as Portals {
+      component "RolePortal" as RolePortal
+      component "StaffWorkspace" as StaffWorkspace
+      component "AdminDashboard" as Admin
+      component "ResearcherAnalytics" as Research
+      component "CareCoordinationPortal" as Care
+      component "YellowBookEncounter" as YellowBook
+      component "IntakePacketLibrary\nSignatureCanvas" as Documents
+      component "ReferralsDispatch\nMilestones + tasks" as Operations
+    }
+
+    package "Field operations" as Field {
+      component "FieldOperationsContext\nprivacy + language + queue" as FieldContext
+      component "FieldOperationsDock\nhide/show + tools" as Dock
+      component "OfflineIndicator\nPrivacyModeToggle" as Status
+      component "Transit / SOAP / handoff\nshare referral modals" as Modals
+    }
+
+    package "Shared client utilities" as Shared {
+      component "auth.ts + hooks + utils" as Utils
+      component "shadcn/ui + Radix" as UI
+      component "yellowbookPdf.ts" as Pdf
+      artifact "providers.json" as Seed
+      component "localStorage\noffline queue + preferences" as LocalStorage
+    }
+  }
+}
+
+Client --> Browser : browse and guided access
+Staff --> Browser : protected workspace
+Browser --> App
+App --> Router
+App --> Providers
+App --> FieldContext
+Router --> Public
+Router --> RolePortal
+RolePortal --> StaffWorkspace
+StaffWorkspace --> Admin
+StaffWorkspace --> Research
+StaffWorkspace --> Care
+StaffWorkspace --> YellowBook
+StaffWorkspace --> Documents
+StaffWorkspace --> Operations
+Public --> Shared
+Portals --> Shared
+FieldContext --> Dock
+FieldContext --> Status
+FieldContext --> Modals
+FieldContext --> LocalStorage
+Dock --> Field
+Utils --> Router : session + role state
+Pdf ..> YellowBook : browser export
+Seed ..> Directory : fallback provider data
+
+note right of FieldContext
+Offline mutations are queued locally,
+then retried when the browser returns online.
+Privacy mode limits visible data on shared devices.
+end note
+
+note bottom of Router
+The client controls visibility and navigation,
+but API authorization remains authoritative.
+end note
+@enduml
