@@ -24,6 +24,7 @@ export type AorHandoff = {
   reviewConfirmed: boolean;
 };
 
+// Preserve handoffs written before the access-outcome vocabulary was introduced.
 const LEGACY_OUTCOME_MAP: Record<string, AorOutcome> = {
   confirmed: "access-achieved",
   "needs-review": "partial-access",
@@ -31,10 +32,12 @@ const LEGACY_OUTCOME_MAP: Record<string, AorOutcome> = {
   "service-unavailable": "no-access",
 };
 
+/** Narrows an unknown value to one of the supported access outcomes. */
 export function isAorOutcome(value: unknown): value is AorOutcome {
   return typeof value === "string" && (AOR_OUTCOMES as readonly string[]).includes(value);
 }
 
+/** Normalizes current and legacy access-outcome payloads into the shared handoff shape. */
 export function normalizeAorHandoff(input: unknown): AorHandoff | null {
   if (!input || typeof input !== "object") return null;
   const value = input as Record<string, unknown>;
@@ -70,6 +73,7 @@ export function normalizeAorHandoff(input: unknown): AorHandoff | null {
   };
 }
 
+/** Validates outcome-dependent fields and explicit review confirmation. */
 export function validateAorHandoff(input: unknown): { ok: true; handoff: AorHandoff } | { ok: false; error: string } {
   const handoff = normalizeAorHandoff(input);
   if (!handoff) return { ok: false, error: "Choose a valid AOR access outcome." };
@@ -83,6 +87,7 @@ export function validateAorHandoff(input: unknown): { ok: true; handoff: AorHand
   return { ok: true, handoff };
 }
 
+/** Returns the display label for an access outcome. */
 export function aorOutcomeLabel(outcome: AorOutcome) {
   return {
     "access-achieved": "Access achieved",

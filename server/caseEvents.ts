@@ -51,6 +51,7 @@ function boundedJson(value: unknown, depth = 0): boolean {
 
 export type CaseEventInput = z.infer<typeof caseEventSchema>;
 
+/** Validates the event shape and rejects event data exceeding its depth/size bounds. */
 export function parseCaseEventInput(input: unknown): CaseEventInput | null {
   const parsed = caseEventSchema.safeParse(input);
   if (!parsed.success || !boundedJson(parsed.data.eventData)) return null;

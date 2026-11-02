@@ -40,6 +40,7 @@ export const CLIENT_SELECTOR_DESTINATIONS = {
 
 export type ClientScreenId = (typeof CLIENT_SCREEN_COVERAGE)[number]["id"];
 
+/** Checks whether an identifier belongs to the declared client screen inventory. */
 export function hasClientScreen(id: string): id is ClientScreenId {
   return CLIENT_SCREEN_COVERAGE.some((screen) => screen.id === id);
 }

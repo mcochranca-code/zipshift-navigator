@@ -107,7 +107,7 @@ Consent is not authorization. A consent record does not bypass role, case, team,
 | `POST` | `/analytics/zip-search` | Records aggregate ZIP-search behavior. Keep payloads pseudonymous and minimum-necessary. |
 | `POST` | `/analytics/field-event` | Records an allowlisted field-test event type and pseudonymous metadata. Do not send names, case IDs, tokens, or document data. |
 | `POST` | `/intake` | Creates a client referral/intake case after validating profile, provider, service, consent, handoff, and access details. Returns `201 { caseId, caseNumber }`. |
-| `POST` | `/feedback` | Records access feedback against a case and creates a timeline/notification side effect. Requires a valid case context and validated rating/barriers/narrative. |
+| `POST` | `/feedback` | Records access feedback with a validated rating and at least one barrier or note. Anonymous feedback is allowed without `caseId`; attaching feedback to a case requires a session and client ownership is checked, and writes a case event. |
 | `GET` | `/cases/mine` | Lists cases visible to the signed-in client or staff workspace. |
 | `GET` | `/notifications` | Returns notifications scoped to the current session and relevant case workflow. |
 | `GET` | `/cases/:caseId/events` | Returns the authorized case event timeline. See the cursor section below. |

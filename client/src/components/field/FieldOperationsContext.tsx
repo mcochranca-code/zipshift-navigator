@@ -24,6 +24,7 @@ function readQueue(): QueuedMutation[] {
   } catch { return []; }
 }
 
+/** Provides field-tool preferences, connectivity state, and the local offline queue. */
 export function FieldOperationsProvider({ children }: { children: ReactNode }) {
   const [privacyMode, setPrivacyMode] = useState(() => localStorage.getItem("zipshift-privacy-mode") === "true");
   const [language, setLanguage] = useState<FieldLanguage>(() => (localStorage.getItem("zipshift-language") as FieldLanguage) || "en");
@@ -34,6 +35,7 @@ export function FieldOperationsProvider({ children }: { children: ReactNode }) {
     setQueue(next);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
   }, []);
+  // This prototype queue is local-only; reconnect clears it instead of replaying writes.
   const flushQueue = useCallback(() => { if (navigator.onLine) persistQueue([]); }, [persistQueue]);
   const enqueue = useCallback((kind: string, payload: unknown) => {
     if (navigator.onLine) return;
@@ -53,12 +55,14 @@ export function FieldOperationsProvider({ children }: { children: ReactNode }) {
   return <PrivacyContext.Provider value={value}>{children}</PrivacyContext.Provider>;
 }
 
+/** Reads field operations state and enforces use inside its provider. */
 export function useFieldOperations() {
   const value = useContext(PrivacyContext);
   if (!value) throw new Error("useFieldOperations must be used within FieldOperationsProvider");
   return value;
 }
 
+/** Masks a person's full name to initials when privacy mode is enabled. */
 export function displayName(name: string, privacyMode: boolean) {
   if (!privacyMode) return name;
   return name.split(/\s+/).filter(Boolean).map((part) => `${part[0]}.`).join("");

@@ -11,14 +11,21 @@ function pageAfter(
   cursor: EventCursor | null,
   limit: number
 ) {
-  const filtered = cursor
-    ? items.filter(
-        item =>
-          item.createdAt > cursor.createdAt ||
-          (item.createdAt === cursor.createdAt && item.id > cursor.id)
-      )
-    : items;
-  return filtered.slice(0, limit);
+  let start = 0;
+  if (cursor) {
+    let end = items.length;
+    // Test fixtures use the same (created_at, id) order as the indexed SQL query.
+    while (start < end) {
+      const middle = Math.floor((start + end) / 2);
+      const item = items[middle];
+      const followsCursor =
+        item.createdAt > cursor.createdAt ||
+        (item.createdAt === cursor.createdAt && item.id > cursor.id);
+      if (followsCursor) end = middle;
+      else start = middle + 1;
+    }
+  }
+  return items.slice(start, start + limit);
 }
 
 describe("cursor pagination", () => {

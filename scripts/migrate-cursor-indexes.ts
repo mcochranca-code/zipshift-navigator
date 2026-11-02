@@ -7,6 +7,7 @@ const migrationFile = path.resolve(
   "server/migrations/20261019_add_cursor_indexes_and_event_idempotency.sql"
 );
 
+/** Splits the cursor/index migration into executable SQL statements. */
 export function splitMigrationStatements(source: string) {
   return source
     .split(/;\s*(?:\n|$)/)
@@ -14,6 +15,7 @@ export function splitMigrationStatements(source: string) {
     .filter(Boolean);
 }
 
+/** Reads and parses the checked-in MySQL cursor/index migration. */
 export async function loadMigrationStatements() {
   return splitMigrationStatements(await readFile(migrationFile, "utf8"));
 }

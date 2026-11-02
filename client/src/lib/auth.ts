@@ -8,6 +8,7 @@ export interface ParsedLoginResponse {
   error: string | null;
 }
 
+/** Reads login response text once and reports empty or non-JSON responses safely. */
 export async function readLoginResponse(
   response: Pick<Response, "text">
 ): Promise<ParsedLoginResponse> {

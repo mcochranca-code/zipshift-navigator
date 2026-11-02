@@ -38,20 +38,17 @@ The large map is intentionally supported by smaller diagrams, each focused on on
 
 Read the large diagram from the outside in: actors enter through the browser, the client routes work into Express domain APIs, cross-cutting guards protect the request, and domain services persist to grouped data tables or private object storage. Then use the focused views when reviewing a specific implementation boundary or planning a change.
 
-## Current verification status
+## Validation
 
-This repository includes the field-tools visibility update. The floating Field tools dock now has bilingual accessible Hide and Show controls, persists its visibility preference in `localStorage`, and closes open field panels when hidden.
+Run the current checks locally rather than relying on a committed test-count snapshot:
 
-| Check | Result |
-| --- | --- |
-| Dependency installation | `pnpm install --frozen-lockfile` passed |
-| TypeScript | `pnpm run check` passed |
-| Automated tests | 53 passed, 3 skipped across 16 test files |
-| Focused cursor/transaction suite | 12 passed, 3 database-dependent tests skipped; 50,000-event cursor fixture completed within the 1-second test budget |
-| Production build | `pnpm run build` passed |
-| Static preview | HTTP 200 for `/` and `/__manus__/version.json` |
+```bash
+pnpm run check
+pnpm test
+pnpm run build
+```
 
-The combined local API preview and the optional database load/integration tests require MySQL/MariaDB. In the source-validation environment no local database was running, so those three database-dependent tests were skipped while the frontend, production build, compiler, unit tests, cursor stress fixture, and migration dry-run were verified independently.
+Database-backed integration tests and API workflows require a configured MySQL/MariaDB instance. The optional `pwa-node-app/` CockroachDB prototype is a separate application with its own `npm start` command and dependency lockfile.
 
 ## Product capabilities
 
@@ -67,7 +64,7 @@ The combined local API preview and the optional database load/integration tests 
 
 - Staff workspace for referrals, cases, YellowBook encounters, reports, notifications, and audit events.
 - Floating field-tools dock for notifications, preparation checklists, transit, capacity reports, referral sharing, SOAP notes, and shift handoffs.
-- Offline mutation queue and online synchronization behavior.
+- Offline mutation queue stored in browser `localStorage`. The current client clears this queue when connectivity returns; it does not replay queued mutations to the API.
 - Privacy mode for minimum-necessary display and bilingual labels.
 - Persistent session indicators and authorized workspace switching.
 - Field-tools Hide/Show control with local persistence.
@@ -206,7 +203,7 @@ pnpm-lock.yaml               Reproducible dependency lockfile
 
 ## Local development
 
-Requirements are Node.js, pnpm 10.x, and MySQL/MariaDB for API-backed flows. Install dependencies and run the checks:
+Requirements are Node.js 20.19+ (or 22.12+), pnpm 10.x, and MySQL/MariaDB for API-backed flows. Install dependencies and run the checks:
 
 ```bash
 pnpm install --frozen-lockfile
@@ -215,7 +212,7 @@ pnpm test
 pnpm run build
 ```
 
-Start the combined development environment with `pnpm run dev`. The Vite client serves the frontend while the Express API listens on the configured application port. For a frontend-only production preview after building:
+Start the combined development environment with `pnpm run dev`. The Vite client serves the frontend while the Express API listens on port `3001` by default. For a frontend-only production preview after building:
 
 ```bash
 pnpm run preview -- --host 0.0.0.0 --port 4173

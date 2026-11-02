@@ -20,6 +20,7 @@ export interface UseCompositionOptions<
 
 type TimerResponse = ReturnType<typeof setTimeout>;
 
+/** Tracks IME composition and suppresses Escape/Enter while text is being composed. */
 export function useComposition<
   T extends HTMLInputElement | HTMLTextAreaElement = HTMLInputElement,
 >(options: UseCompositionOptions<T> = {}): UseCompositionReturn<T> {

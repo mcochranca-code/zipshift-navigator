@@ -7,6 +7,7 @@ function storageConfig() {
   return { forgeUrl: forgeUrl.replace(/\/+$/, ""), forgeKey };
 }
 
+/** Uploads an object to private storage under a collision-resistant key. */
 export async function storagePut(relKey: string, data: Buffer, contentType = "application/octet-stream") {
   const { forgeUrl, forgeKey } = storageConfig();
   const keyBase = relKey.replace(/^\/+/, "");
@@ -16,11 +17,12 @@ export async function storagePut(relKey: string, data: Buffer, contentType = "ap
   if (!presign.ok) throw new Error("Unable to authorize secure file storage.");
   const { url } = await presign.json() as { url?: string };
   if (!url) throw new Error("Secure storage did not return an upload URL.");
-  const uploaded = await fetch(url, { method: "PUT", headers: { "Content-Type": contentType }, body: data });
+  const uploaded = await fetch(url, { method: "PUT", headers: { "Content-Type": contentType }, body: Uint8Array.from(data) });
   if (!uploaded.ok) throw new Error("Unable to upload the secure document.");
   return { key, url: `/manus-storage/${key}` };
 }
 
+/** Requests a short-lived download URL for an existing private storage object. */
 export async function storageGetSignedUrl(relKey: string) {
   const { forgeUrl, forgeKey } = storageConfig();
   const response = await fetch(`${forgeUrl}/v1/storage/presign/get?path=${encodeURIComponent(relKey.replace(/^\/+/, ""))}`, { headers: { Authorization: `Bearer ${forgeKey}` } });

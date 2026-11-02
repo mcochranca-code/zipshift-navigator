@@ -14,6 +14,7 @@ export type YellowBookPdfInput = {
   plan: { immediate: string; followUp: string; referral: string };
 };
 
+/** Builds a printable encounter PDF, applying privacy-mode name masking. */
 export function buildYellowBookPdf(input: YellowBookPdfInput) {
   const pdf = new jsPDF({ unit: "pt", format: "letter" });
   const lines = [
@@ -51,6 +52,7 @@ export function buildYellowBookPdf(input: YellowBookPdfInput) {
   pdf.setFontSize(10);
   lines.slice(1).forEach((line) => {
     const wrapped = pdf.splitTextToSize(line, 520);
+    // Keep each wrapped field together when possible and continue long reports on a new page.
     if (y > 730) {
       pdf.addPage();
       y = 52;
@@ -61,6 +63,7 @@ export function buildYellowBookPdf(input: YellowBookPdfInput) {
   return pdf;
 }
 
+/** Downloads a generated YellowBook encounter PDF to the user's device. */
 export function downloadYellowBookPdf(input: YellowBookPdfInput) {
   buildYellowBookPdf(input).save(`zipshift-yellowbook-${input.caseNumber}.pdf`);
 }

@@ -1,0 +1,25 @@
+diff --git a/src/index.js b/src/index.js
+--- a/src/index.js
++++ b/src/index.js
+@@ -316,6 +316,20 @@ export const Switch = ({ children, location }) => {
+   const router = useRouter();
+   const originalLocation = usePathnameFromRouter(router);
+ 
++  const allChildren = flattenChildren(children);
++  // Keep the route inventory available to the host's runtime diagnostics.
++  if (typeof window !== "undefined") {
++    window.__WOUTER_ROUTES__ ??= [];
++    allChildren.forEach((element) => {
++      if (isValidElement(element) && element.props.path) {
++        const path = element.props.path;
++        if (!window.__WOUTER_ROUTES__.includes(path)) {
++          window.__WOUTER_ROUTES__.push(path);
++        }
++      }
++    });
++  }
++
+-  for (const element of flattenChildren(children)) {
++  for (const element of allChildren) {
+     let match = 0;
+ 

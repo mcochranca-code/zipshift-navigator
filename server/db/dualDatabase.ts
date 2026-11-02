@@ -56,6 +56,7 @@ function normalize(value: unknown): JsonValue {
   return value as JsonValue;
 }
 
+/** Converts query rows to stable JSON values for cross-database parity comparison. */
 export function normalizeRows(rows: unknown[]): JsonValue[] {
   return rows.map(normalize).sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
 }
@@ -184,6 +185,7 @@ export class DualDatabaseAdapter {
 }
 
 let singleton: DualDatabaseAdapter | undefined;
+/** Returns the process-wide database adapter, creating it on first access. */
 export function getDualDatabase(): DualDatabaseAdapter {
   singleton ??= new DualDatabaseAdapter();
   return singleton;

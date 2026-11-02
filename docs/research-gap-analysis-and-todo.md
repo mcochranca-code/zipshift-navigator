@@ -226,7 +226,7 @@ The following capabilities are already present and should be preserved:
 
 #### 15. Offline-first and synchronization behavior
 
-**Gap:** The product is described as a PWA, but the core research workflows do not yet have an explicit offline queue, conflict resolution policy, or visible sync state.
+**Gap:** Field tools persist a local queue while offline, but reconnect currently clears it without replaying mutations. Research workflows still lack an explicit offline queue, conflict-resolution policy, and visible sync state.
 
 **Todo:** Define offline support for resource lookup, intake drafts, and encounter notes. Add queued writes, retry behavior, conflict handling, and user-visible sync status.
 

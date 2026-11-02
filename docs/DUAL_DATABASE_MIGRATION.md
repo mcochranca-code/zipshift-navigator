@@ -2,7 +2,7 @@
 
 ## Scope
 
-ZipShift currently exposes **108 API routes** from `server/index.ts`. The route surface is already functionally grouped, but the implementation is tightly coupled to MySQL through `mysql2/promise`, `?` placeholders, MySQL result metadata, MySQL DDL, `FIELD(...)`, `JSON_EXTRACT(...)`, and MySQL migration syntax.
+ZipShift currently exposes **110 API routes** from `server/index.ts`. The route surface is already functionally grouped, but the implementation is tightly coupled to MySQL through `mysql2/promise`, `?` placeholders, MySQL result metadata, MySQL DDL, `FIELD(...)`, `JSON_EXTRACT(...)`, and MySQL migration syntax.
 
 The target is to make CockroachDB the primary operational database while retaining the existing MySQL/MariaDB system as a read-only backup and rollback source during the migration window. The two databases must not be treated as casually interchangeable: CockroachDB is PostgreSQL-wire-compatible, has different transaction and DDL behavior, and must become authoritative only after parity checks pass.
 

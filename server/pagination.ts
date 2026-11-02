@@ -13,12 +13,14 @@ function cursorSecret() {
   );
 }
 
+/** Parses a positive page size and clamps it to the caller's maximum. */
 export function parseLimit(value: unknown, fallback = 50, maximum = 100) {
   const parsed =
     typeof value === "string" && /^\d+$/.test(value) ? Number(value) : fallback;
   return Math.min(maximum, Math.max(1, parsed));
 }
 
+/** Encodes and signs a versioned case-event cursor for opaque client pagination. */
 export function encodeEventCursor(cursor: EventCursor) {
   const body = Buffer.from(JSON.stringify(cursor)).toString("base64url");
   const signature = createHmac("sha256", cursorSecret())
@@ -27,6 +29,7 @@ export function encodeEventCursor(cursor: EventCursor) {
   return `${body}.${signature}`;
 }
 
+/** Verifies and decodes a cursor; malformed or tampered tokens return `null`. */
 export function decodeEventCursor(value: unknown): EventCursor | null {
   if (typeof value !== "string" || value.length > 512) return null;
   const [body, suppliedSignature] = value.split(".");
@@ -36,6 +39,7 @@ export function decodeEventCursor(value: unknown): EventCursor | null {
     .digest("base64url");
   const supplied = Buffer.from(suppliedSignature);
   const expected = Buffer.from(expectedSignature);
+  // Compare fixed-length signature bytes in constant time after the length check.
   if (
     supplied.length !== expected.length ||
     !timingSafeEqual(supplied, expected)

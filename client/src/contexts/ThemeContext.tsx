@@ -16,6 +16,7 @@ interface ThemeProviderProps {
   switchable?: boolean;
 }
 
+/** Provides the selected theme and persists it when switching is enabled. */
 export function ThemeProvider({
   children,
   defaultTheme = "light",
@@ -55,6 +56,7 @@ export function ThemeProvider({
   );
 }
 
+/** Returns the active theme context or throws when used outside its provider. */
 export function useTheme() {
   const context = useContext(ThemeContext);
   if (!context) {

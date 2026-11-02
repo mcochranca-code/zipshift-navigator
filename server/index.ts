@@ -292,6 +292,7 @@ const INSTRUMENT_STATUSES: InstrumentStatus[] = ["draft", "active", "retired"];
 const INSTRUMENT_MODES: InstrumentMode[] = ["form", "interview", "self_report", "import"];
 const RESPONSE_TYPES: ResponseType[] = ["text", "number", "date", "boolean", "single_select", "multi_select", "likert", "note"];
 
+/** Checks a study/configuration key against the lowercase identifier format. */
 export function isSafeKey(value: unknown): value is string { return typeof value === "string" && /^[a-z0-9][a-z0-9_-]{2,79}$/.test(value); }
 function isStudyStatus(value: unknown): value is StudyStatus { return typeof value === "string" && STUDY_STATUSES.includes(value as StudyStatus); }
 function isProtocolStatus(value: unknown): value is ProtocolStatus { return typeof value === "string" && PROTOCOL_STATUSES.includes(value as ProtocolStatus); }
@@ -304,6 +305,7 @@ function isVariableRole(value: unknown): value is VariableRole { return typeof v
 function isInstrumentStatus(value: unknown): value is InstrumentStatus { return typeof value === "string" && INSTRUMENT_STATUSES.includes(value as InstrumentStatus); }
 function isInstrumentMode(value: unknown): value is InstrumentMode { return typeof value === "string" && INSTRUMENT_MODES.includes(value as InstrumentMode); }
 function isResponseType(value: unknown): value is ResponseType { return typeof value === "string" && RESPONSE_TYPES.includes(value as ResponseType); }
+/** Normalizes an optional bounded list of primitive research values. */
 export function normalizeResearchValueList(value: unknown): Array<string | number | boolean> | null {
   if (value === undefined) return [];
   if (!Array.isArray(value) || value.length > 100) return null;
@@ -311,6 +313,7 @@ export function normalizeResearchValueList(value: unknown): Array<string | numbe
 }
 function nullableDate(value: unknown): string | null | undefined { return value === undefined ? undefined : typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null; }
 
+/** Validates and clamps editor settings, falling back to defaults for invalid values. */
 export function normalizeGlobalEditorSettings(input: Partial<GlobalEditorSettings>): GlobalEditorSettings {
   const hex = (value: unknown, fallback: string) => typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value) ? value : fallback;
   const scale = (value: unknown, fallback: number, min: number, max: number) => typeof value === "number" && Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback;
@@ -517,6 +520,7 @@ async function createCase({
   return { id, caseNumber, createdAt };
 }
 
+/** Creates the Express app, initializing required seed data and API routes. */
 export async function createZipShiftApp() {
   const app = express();
 
@@ -2057,6 +2061,7 @@ export async function createZipShiftApp() {
   return app;
 }
 
+/** Starts the HTTP server on `PORT` or the default application port. */
 export async function startServer() {
   const app = await createZipShiftApp();
   const server = createServer(app);
