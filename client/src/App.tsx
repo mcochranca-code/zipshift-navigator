@@ -8,6 +8,7 @@ import Home from "./pages/Home";
 import FieldOperationsDock from "./components/field/FieldOperationsDock";
 import { FieldOperationsProvider } from "./components/field/FieldOperationsContext";
 import { Analytics } from "@vercel/analytics/react";
+import { LiveAnnouncer, SkipLink } from "./lib/a11y";
 
 
 function Router() {
@@ -35,6 +36,9 @@ function App() {
           // switchable
         >
           <TooltipProvider>
+            {/* First focusable element on every screen */}
+            <SkipLink />
+            <LiveAnnouncer />
             <Toaster />
             <Router />
             <FieldOperationsDock />

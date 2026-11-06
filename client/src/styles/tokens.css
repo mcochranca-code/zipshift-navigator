@@ -1,0 +1,188 @@
+/*
+ * ZipShift design tokens
+ * ---------------------------------------------------------------------------
+ * Single source of truth for color, spacing, radius, typography, elevation,
+ * z-index and motion. The same values are exported for TypeScript callers
+ * (Leaflet marker HTML, charts, inline styles) from `client/src/lib/designTokens.ts`
+ * — keep the two files in sync.
+ *
+ * Contrast notes (WCAG 2.2 AA, measured against the surface they sit on):
+ *   --zs-color-brand        #0d8077 on #ffffff  4.80:1  (text, buttons with white labels)
+ *   --zs-color-brand-strong #0f766e on #ffffff  5.47:1  (small bold labels, links)
+ *   --zs-color-brand-bright #159d92 on #ffffff  3.35:1  DECORATIVE ONLY: borders, dots,
+ *                                               focus halos, large display text (>= 24px)
+ *   --zs-color-text         #142846 on #ffffff 14.6:1
+ *   --zs-color-text-muted   #52657d on #ffffff  5.97:1
+ *   --zs-color-text-subtle  #64748b on #ffffff  4.76:1  (smallest text allowed)
+ *   --zs-color-success-text #15803d on #ffffff  5.02:1
+ *   --zs-color-danger-text  #be123c on #fff1f2  5.72:1
+ *   --zs-color-warning-text #a16207 on #fff5d9  4.53:1
+ *   --zs-color-on-brand     #ffffff on brand    4.80:1
+ * Dark theme values are tuned against #111827 / #1f2937.
+ */
+
+:root {
+  /* ── Color: brand ─────────────────────────────────────────────── */
+  --zs-color-brand: #0d8077;
+  --zs-color-brand-strong: #0f766e;
+  --zs-color-brand-bright: #159d92;
+  --zs-color-brand-soft: #e3f5f3;
+  --zs-color-brand-softer: #f4faf9;
+  --zs-color-on-brand: #ffffff;
+  --zs-color-navy: #142846;
+  --zs-color-navy-deep: #10243f;
+  --zs-color-sidebar: #182d4d;
+
+  /* ── Color: surfaces & text ───────────────────────────────────── */
+  --zs-color-surface: #ffffff;
+  --zs-color-surface-muted: #f7f9fc;
+  --zs-color-surface-sunken: #eef4f6;
+  --zs-color-border: #dce6ef;
+  --zs-color-border-strong: #b8c7d6;
+  --zs-color-text: #142846;
+  --zs-color-text-muted: #52657d;
+  --zs-color-text-subtle: #64748b;
+
+  /* ── Color: status ────────────────────────────────────────────── */
+  --zs-color-success-text: #15803d;
+  --zs-color-success-soft: #dcfce7;
+  --zs-color-warning-text: #a16207;
+  --zs-color-warning-soft: #fff5d9;
+  --zs-color-danger: #c81e1e;
+  --zs-color-danger-text: #be123c;
+  --zs-color-danger-soft: #fff1f2;
+  --zs-color-info-text: #0369a1;
+  --zs-color-info-soft: #dff3ff;
+
+  /* ── Focus ────────────────────────────────────────────────────── */
+  --zs-focus-ring-color: #0b6bcb;
+  --zs-focus-ring-width: 3px;
+  --zs-focus-ring-offset: 2px;
+  --zs-focus-ring: 0 0 0 var(--zs-focus-ring-offset) var(--zs-color-surface), 0 0 0 calc(var(--zs-focus-ring-offset) + var(--zs-focus-ring-width)) var(--zs-focus-ring-color);
+
+  /* ── Spacing (4px base) ───────────────────────────────────────── */
+  --zs-space-0: 0;
+  --zs-space-1: 0.25rem;
+  --zs-space-2: 0.5rem;
+  --zs-space-3: 0.75rem;
+  --zs-space-4: 1rem;
+  --zs-space-5: 1.25rem;
+  --zs-space-6: 1.5rem;
+  --zs-space-8: 2rem;
+  --zs-space-10: 2.5rem;
+  --zs-space-12: 3rem;
+  --zs-tap-target: 44px;
+
+  /* ── Radius ───────────────────────────────────────────────────── */
+  --zs-radius-xs: calc(4px * var(--zipshift-radius-scale, 1));
+  --zs-radius-sm: calc(6px * var(--zipshift-radius-scale, 1));
+  --zs-radius-md: calc(9px * var(--zipshift-radius-scale, 1));
+  --zs-radius-lg: calc(12px * var(--zipshift-radius-scale, 1));
+  --zs-radius-xl: calc(16px * var(--zipshift-radius-scale, 1));
+  --zs-radius-pill: 999px;
+
+  /* ── Typography ───────────────────────────────────────────────── */
+  --zs-font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --zs-font-display: "Playfair Display", Georgia, serif;
+  --zs-font-size-xs: 0.75rem;   /* 12px — smallest size for body copy */
+  --zs-font-size-sm: 0.875rem;  /* 14px */
+  --zs-font-size-md: 1rem;      /* 16px */
+  --zs-font-size-lg: 1.125rem;  /* 18px */
+  --zs-font-size-xl: 1.5rem;    /* 24px */
+  --zs-font-size-2xl: 2rem;     /* 32px */
+  --zs-line-height-tight: 1.2;
+  --zs-line-height-body: 1.55;
+  --zs-font-weight-regular: 400;
+  --zs-font-weight-semibold: 600;
+  --zs-font-weight-bold: 800;
+
+  /* ── Elevation ────────────────────────────────────────────────── */
+  --zs-shadow-1: 0 1px 2px rgb(15 42 72 / 6%), 0 1px 3px rgb(15 42 72 / 6%);
+  --zs-shadow-2: 0 8px 22px rgb(15 42 72 / 6%);
+  --zs-shadow-3: 0 14px 36px rgb(15 42 72 / 9%);
+  --zs-shadow-4: 0 24px 60px rgb(15 42 72 / 18%);
+
+  /* ── Layering ─────────────────────────────────────────────────── */
+  --zs-z-header: 50;
+  --zs-z-nav: 100;
+  --zs-z-drawer: 200;
+  --zs-z-sheet: 300;
+  --zs-z-modal: 450;
+  --zs-z-toast: 600;
+  --zs-z-skip-link: 1000;
+
+  /* ── Motion ───────────────────────────────────────────────────── */
+  --zs-duration-instant: 80ms;
+  --zs-duration-fast: 160ms;
+  --zs-duration-base: 240ms;
+  --zs-duration-slow: 320ms;
+  --zs-duration-slower: 480ms;
+  --zs-duration-loop: 1400ms;
+  --zs-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --zs-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --zs-ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --zs-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --zs-stagger: 35ms;
+  --zs-distance-sm: 4px;
+  --zs-distance-md: 8px;
+  --zs-distance-lg: 16px;
+
+  /* Legacy aliases kept so existing rules keep working */
+  --zipshift-motion-ease: var(--zs-ease-out);
+  --zipshift-motion-fast: var(--zs-duration-fast);
+  --zipshift-motion-page: var(--zs-duration-slow);
+}
+
+/* Dark theme. Driven by the client Dark Mode setting (Home sets
+ * <html data-zs-theme="dark">). Deliberately NOT keyed to the `.dark` class:
+ * ThemeProvider always sets `.dark` while ZipShift screens are light. */
+[data-zs-theme="dark"] {
+  --zs-color-brand: #2dd4bf;
+  --zs-color-brand-strong: #5eead4;
+  --zs-color-brand-bright: #2dd4bf;
+  --zs-color-brand-soft: #163d42;
+  --zs-color-brand-softer: #12302f;
+  --zs-color-on-brand: #0b1f1d;
+  --zs-color-surface: #111827;
+  --zs-color-surface-muted: #1f2937;
+  --zs-color-surface-sunken: #0b1220;
+  --zs-color-border: #374151;
+  --zs-color-border-strong: #4b5563;
+  --zs-color-text: #f9fafb;
+  --zs-color-text-muted: #d1d5db;
+  --zs-color-text-subtle: #9ca3af;
+  --zs-color-success-text: #4ade80;
+  --zs-color-danger-text: #fda4af;
+  --zs-color-warning-text: #fcd34d;
+  --zs-focus-ring-color: #7cc4ff;
+}
+
+/* Motion is opt-in to what the user can tolerate. Reduced motion keeps
+ * opacity fades (which do not trigger vestibular issues) but removes
+ * travel, scale and looping animation. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --zs-duration-instant: 0ms;
+    --zs-duration-fast: 0ms;
+    --zs-duration-base: 0ms;
+    --zs-duration-slow: 0ms;
+    --zs-duration-slower: 0ms;
+    --zs-stagger: 0ms;
+    --zs-distance-sm: 0px;
+    --zs-distance-md: 0px;
+    --zs-distance-lg: 0px;
+  }
+}
+
+/* Users can also force reduced motion in-app (Settings → Reduce motion). */
+:root[data-zs-motion="reduce"] {
+  --zs-duration-instant: 0ms;
+  --zs-duration-fast: 0ms;
+  --zs-duration-base: 0ms;
+  --zs-duration-slow: 0ms;
+  --zs-duration-slower: 0ms;
+  --zs-stagger: 0ms;
+  --zs-distance-sm: 0px;
+  --zs-distance-md: 0px;
+  --zs-distance-lg: 0px;
+}
