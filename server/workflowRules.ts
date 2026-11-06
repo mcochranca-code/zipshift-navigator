@@ -35,3 +35,13 @@ export function createCaseCsv(rows: Array<Record<string, unknown>>) {
     ...rows.map((row) => [row.caseNumber, row.clientName, row.serviceCategory, row.status, row.priority, row.assignedName, row.createdAt, row.updatedAt]),
   ].map((row) => row.map(escape).join(",")).join("\n");
 }
+
+/**
+ * Who may record access outcomes or edit housing status on a referral:
+ * administrators and care-team members (staff accounts with a specialist
+ * role). Researchers without a care-team role read de-identified aggregates
+ * only and cannot write to individual referrals.
+ */
+export function canRecordAccessOutcome(user: { role: string; specialistRole?: string | null }) {
+  return user.role === "admin" || (user.role === "researcher" && Boolean(user.specialistRole));
+}

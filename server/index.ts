@@ -8,7 +8,9 @@ import directoryResources from "./data/directory-resources.json";
 import providersData from "../client/src/data/providers.json";
 import { hashPassword, validateEmail, validateLogicalAge, validatePassword, verifyPassword } from "./authUtils";
 import { COVERED_ZIPS, isCoveredZip, presentAggregateDemand } from "./zipAnalytics";
-import { createCaseCsv, hasWorkspaceAccess, isCasePriority, isCaseStatus, normalizeClientProfile } from "./workflowRules";
+import { canRecordAccessOutcome, createCaseCsv, hasWorkspaceAccess, isCasePriority, isCaseStatus, normalizeClientProfile } from "./workflowRules";
+import { accessOutcomeReportToCsv, buildAccessOutcomeReport, isContactPreference, normalizeHousingStatus, referralFollowUpState, validateAccessOutcome, MIN_CELL_SIZE, type AccessOutcomeInput, type OutcomeSource } from "../shared/accessOutcomes";
+import { toOutcomeReportRows, type CaseOutcomeSourceRow, type OutcomeLedgerSourceRow } from "./accessOutcomeReport";
 import { buildYellowBookPdf } from "../client/src/lib/yellowbookPdf";
 import { emergencyResources } from "./emergencyResources";
 import { storageGetSignedUrl, storagePut } from "./storage";
@@ -18,6 +20,8 @@ import { authRepository, clientProfileRepository, directoryRepository } from "./
 import { withMySqlTransaction } from "./db/transactions";
 import { parseCaseEventInput } from "./caseEvents";
 import { decodeEventCursor, encodeEventCursor, parseLimit } from "./pagination";
+import { accessTier, canAccessIdentifiedData } from "../shared/accessPolicy";
+import { RESEARCHER_FORBIDDEN_MESSAGE, isResearcherAllowedRoute, pseudonymousId } from "./researchAccess";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -27,7 +31,7 @@ const CASE_STATUSES = ["new", "in_progress", "pending", "completed", "denied", "
 const CASE_PRIORITIES = ["low", "standard", "high", "urgent"] as const;
 const LONGITUDINAL_MILESTONE_TYPES = ["intake", "need_identified", "referral", "aor", "task", "appointment", "encounter", "follow_up", "outcome", "handoff"] as const;
 const MILESTONE_STATUSES = ["open", "in_progress", "blocked", "completed", "cancelled"] as const;
-const FIELD_TEST_EVENT_TYPES = ["guided_start", "guided_completion", "guided_dropoff", "resource_open", "resource_call", "resource_directions", "resource_website"] as const;
+const FIELD_TEST_EVENT_TYPES = ["guided_start", "guided_completion", "guided_dropoff", "resource_open", "resource_call", "resource_directions", "resource_website", "resource_share", "resource_save", "before_you_go_open", "directions_handoff", "search_no_results"] as const;
 
 type Role = "client" | "admin" | "researcher";
 type SpecialistRole = "intake_specialist" | "medical_specialist" | "peer_support_specialist" | "sud_specialist" | "behavioral_health_specialist" | "residential_care_specialist" | "care_coordinator";
@@ -156,7 +160,18 @@ function userFromRow(row: RowDataPacket): AppUser {
   };
 }
 
+const SESSION_CACHE = Symbol("zipshiftSession");
+type SessionCachedRequest = Request & { [SESSION_CACHE]?: SessionContext | null };
+
 async function getSession(req: Request): Promise<SessionContext | null> {
+  const cached = req as SessionCachedRequest;
+  if (SESSION_CACHE in cached) return cached[SESSION_CACHE] ?? null;
+  const session = await loadSession(req);
+  cached[SESSION_CACHE] = session;
+  return session;
+}
+
+async function loadSession(req: Request): Promise<SessionContext | null> {
   const cookies = parseCookies(req.headers.cookie);
   const sessionId = cookies[SESSION_COOKIE] || (req.headers["x-session-id"] as string | undefined);
   if (!sessionId) return null;
@@ -215,7 +230,35 @@ async function requireRole(req: Request, res: Response, roles: Role[]): Promise<
   return session;
 }
 
+/**
+ * Client-identifying referral data (names, contact details, DOB, notes,
+ * addresses, case numbers) and every referral write: administrators and
+ * care-team staff only. Research-only accounts get 403.
+ */
+async function requireIdentifiedStaff(req: Request, res: Response): Promise<SessionContext | null> {
+  const session = await requireRole(req, res, ["admin", "researcher"]);
+  if (!session) return null;
+  if (!canAccessIdentifiedData(session.user)) {
+    res.status(403).json({ error: RESEARCHER_FORBIDDEN_MESSAGE });
+    return null;
+  }
+  return session;
+}
+
+/** Records who exported what into the admin audit log. Details never carry client identifiers. */
+async function recordExportAudit(session: SessionContext, exportType: string, details: { identified: boolean; rowCount?: number; targetId?: string | null; filters?: Record<string, unknown> }) {
+  await recordAdminAudit(session.user.id, "DATA_EXPORTED", "export", details.targetId ?? exportType, {
+    exportType,
+    identified: details.identified,
+    actorRole: session.user.role,
+    accessTier: accessTier(session.user),
+    rowCount: details.rowCount ?? null,
+    filters: details.filters || {},
+  });
+}
+
 async function canAccessCase(session: SessionContext, caseId: string, action: "read" | "write") {
+  if (session.user.role !== "client" && !canAccessIdentifiedData(session.user)) return false;
   const [rows] = await db.query<RowDataPacket[]>("SELECT id, client_id FROM referral_cases WHERE id = ? LIMIT 1", [caseId]);
   const record = rows[0];
   if (!record) return false;
@@ -234,9 +277,7 @@ async function hasStudyAccess(session: SessionContext, studyId: string) {
 }
 
 async function requireCareTeam(req: Request, res: Response): Promise<SessionContext | null> {
-  const session = await requireRole(req, res, ["admin", "researcher"]);
-  if (!session) return null;
-  return session;
+  return requireIdentifiedStaff(req, res);
 }
 
 function resolveCareTeam(session: SessionContext, requested: unknown): SpecialistRole {
@@ -374,6 +415,11 @@ function normalizeCase(row: RowDataPacket) {
     assignedToId: row.assigned_to || null,
     intake: parseJson<Record<string, unknown>>(row.intake_json, {}),
     resolutionNotes: row.resolution_notes || "",
+    housingStatus: row.housing_status || null,
+    sdohConsent: Boolean(row.sdoh_consent),
+    contactPreference: row.contact_preference || null,
+    accessOutcome: row.access_outcome || null,
+    connectedAt: row.connected_at ? Number(row.connected_at) : null,
     createdAt: Number(row.created_at),
     updatedAt: Number(row.updated_at),
     closedAt: row.closed_at ? Number(row.closed_at) : null,
@@ -491,6 +537,9 @@ async function createCase({
   priority = "standard",
   intake,
   eventType = "CONTACT_WEBFORM_SUBMIT",
+  housingStatus = null,
+  sdohConsent = false,
+  contactPreference = null,
 }: {
   clientId?: string | null;
   providerId?: string | null;
@@ -500,15 +549,18 @@ async function createCase({
   priority?: CasePriority;
   intake: Record<string, unknown>;
   eventType?: string;
+  housingStatus?: string | null;
+  sdohConsent?: boolean;
+  contactPreference?: string | null;
 }) {
   const id = randomUUID();
   const createdAt = now();
   const caseNumber = `CASE-${new Date(createdAt).getFullYear()}-${randomBytes(3).toString("hex").toUpperCase()}`;
   await db.execute(
     `INSERT INTO referral_cases
-     (id, case_number, client_id, provider_id, study_id, protocol_version_id, service_category, status, priority, intake_json, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 'new', ?, ?, ?, ?)`,
-    [id, caseNumber, clientId || null, providerId || null, studyId || null, protocolVersionId || null, serviceCategory, priority, JSON.stringify(intake), createdAt, createdAt]
+     (id, case_number, client_id, provider_id, study_id, protocol_version_id, service_category, status, priority, intake_json, housing_status, housing_status_updated_at, sdoh_consent, contact_preference, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'new', ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, caseNumber, clientId || null, providerId || null, studyId || null, protocolVersionId || null, serviceCategory, priority, JSON.stringify(intake), housingStatus, housingStatus ? createdAt : null, sdohConsent, contactPreference, createdAt, createdAt]
   );
   await db.execute(
     "INSERT INTO case_events (id, case_id, actor_user_id, event_type, event_data_json, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -520,12 +572,48 @@ async function createCase({
   return { id, caseNumber, createdAt };
 }
 
+/** Appends an outcome to the ledger and updates the referral's current outcome. */
+async function recordAccessOutcome({ caseId, value, source, actorUserId, actorRole, housingStatus }: { caseId: string; value: AccessOutcomeInput; source: OutcomeSource; actorUserId: string; actorRole: string; housingStatus: string | null }) {
+  const createdAt = now();
+  const outcomeId = randomUUID();
+  await withMySqlTransaction(db, async (connection) => {
+    await connection.execute(
+      "INSERT INTO referral_access_outcomes (id, case_id, outcome, barriers_json, housing_status_snapshot, connected_at, source, recorded_by, recorded_by_role, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      [outcomeId, caseId, value.outcome, JSON.stringify(value.barriers), housingStatus, value.connectedAt, source, actorUserId, actorRole, createdAt]
+    );
+    await connection.execute("UPDATE referral_cases SET access_outcome = ?, connected_at = ?, updated_at = ? WHERE id = ?", [value.outcome, value.connectedAt, createdAt, caseId]);
+    // The case timeline is visible to the client, so the note stays neutral and
+    // the barrier codes live in event data rather than free text.
+    await connection.execute(
+      "INSERT INTO case_events (id, case_id, actor_user_id, event_type, event_data_json, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      [randomUUID(), caseId, actorUserId, source === "client" ? "ACCESS_OUTCOME_SELF_REPORTED" : "ACCESS_OUTCOME_RECORDED", JSON.stringify({ outcome: value.outcome, barriers: value.barriers, source }), "Referral follow-up recorded.", createdAt]
+    );
+  });
+  await syncCaseMilestone({ caseId, actorUserId, actorRole, milestoneType: "follow_up", assignedTeam: "care_coordinator", title: value.outcome === "connected" ? "Connected to service" : value.outcome === "lost_contact" ? "Lost contact — outreach needed" : "Not connected — barrier to resolve", summary: "Access outcome recorded from referral follow-up.", status: value.outcome === "connected" ? "completed" : "blocked", source: { source: "access_outcome", outcome: value.outcome } });
+  return { id: outcomeId, createdAt };
+}
+
 /** Creates the Express app, initializing required seed data and API routes. */
 export async function createZipShiftApp() {
   const app = express();
 
   app.use(express.json({ limit: "1mb" }));
   app.use(express.urlencoded({ extended: true }));
+
+  // Least privilege for research-only accounts, enforced before any handler:
+  // only the allowlisted de-identified, aggregate, and pseudonymous routes
+  // are reachable. Everything else under /api answers 403.
+  app.use("/api", (req, res, next) => {
+    getSession(req)
+      .then((session) => {
+        if (session && accessTier(session.user) === "researcher" && !isResearcherAllowedRoute(req.method, req.originalUrl)) {
+          res.status(403).json({ error: RESEARCHER_FORBIDDEN_MESSAGE });
+          return;
+        }
+        next();
+      })
+      .catch(next);
+  });
 
   await importDirectoryOnce();
   await seedIntakePacketLibrary();
@@ -854,7 +942,7 @@ export async function createZipShiftApp() {
   });
 
   app.post("/api/intake", async (req, res) => {
-    const { name, phone, situation, needs, consent, providerId, priority, handoff, studyId, protocolVersionId, researchConsentDocumentId } = req.body as Record<string, unknown>;
+    const { name, phone, situation, needs, consent, providerId, priority, handoff, studyId, protocolVersionId, researchConsentDocumentId, housingStatus, sdohConsent, contactPreference } = req.body as Record<string, unknown>;
     if (!name || !consent || !Array.isArray(needs) || needs.length === 0) {
       return res.status(400).json({ error: "Name, requested services, and consent are required." });
     }
@@ -880,6 +968,10 @@ export async function createZipShiftApp() {
       serviceCategory: String(needs[0]),
       priority: CASE_PRIORITIES.includes(priority as CasePriority) ? (priority as CasePriority) : "standard",
       intake: { name, phone: phone || null, situation: situation || null, needs, consent: Boolean(consent), researchConsentDocumentId: researchConsentDocumentId || null, handoff: handoff && typeof handoff === "object" ? handoff : null },
+      // Housing status is SDOH data: stored only with the separate SDOH consent, never inferred.
+      housingStatus: normalizeHousingStatus(housingStatus, sdohConsent),
+      sdohConsent: sdohConsent === true,
+      contactPreference: isContactPreference(contactPreference) ? contactPreference : null,
     });
     res.status(201).json({ success: true, referralId: created.caseNumber, caseId: created.id, estimatedFollowUp: "1–2 business days" });
   });
@@ -911,6 +1003,9 @@ export async function createZipShiftApp() {
     );
     const eventLabels: Record<string, string> = {
       ACCESS_FEEDBACK_SUBMITTED: "Access feedback recorded",
+      ACCESS_OUTCOME_RECORDED: "Your referral follow-up was recorded",
+      ACCESS_OUTCOME_SELF_REPORTED: "Thanks for telling us how it went",
+      HOUSING_STATUS_UPDATED: "Your referral information was updated",
       CONTACT_WEBFORM_SUBMIT: "Referral request submitted",
       YELLOWBOOK_ENCOUNTER_CREATED: "Your referral received a staff update",
       YELLOWBOOK_ENCOUNTER_SAVED: "Your referral record was updated",
@@ -940,6 +1035,17 @@ export async function createZipShiftApp() {
         ...taskRows.map((row) => ({ id: `care-task-${row.id}`, title: "Pending case task", message: `${row.case_number} · ${row.title}${row.due_at ? ` · Due ${new Date(Number(row.due_at)).toLocaleDateString()}` : ""}`, createdAt: Number(row.updated_at) })),
       ];
     }
+    let followUpNotifications: Array<{ id: string; title: string; message: string; createdAt: number }> = [];
+    if (canRecordAccessOutcome(session.user)) {
+      // Referrals that have gone quiet past their priority's follow-up window.
+      const [openRows] = await db.query<RowDataPacket[]>("SELECT id, case_number, service_category, priority, status, created_at, updated_at FROM referral_cases WHERE status IN ('new', 'in_progress', 'pending') AND access_outcome IS NULL ORDER BY updated_at ASC LIMIT 200");
+      const checkedAt = now();
+      followUpNotifications = openRows
+        .map((row) => ({ row, state: referralFollowUpState({ status: String(row.status), priority: String(row.priority), createdAt: Number(row.created_at), updatedAt: Number(row.updated_at) }, checkedAt) }))
+        .filter(({ state }) => state.stale)
+        .slice(0, 30)
+        .map(({ row, state }) => ({ id: `follow-up-${row.id}-${state.idleDays}`, title: "Referral needs follow-up", message: `${row.case_number} · ${row.service_category} · no update in ${state.idleDays} day${state.idleDays === 1 ? "" : "s"} · record whether the person was connected`, createdAt: Number(row.updated_at) }));
+    }
     let researchNotifications: Array<{ id: string; title: string; message: string; createdAt: number }> = [];
     if (session.user.role === "researcher" || session.user.role === "admin") {
       const membershipClause = session.user.role === "admin" ? "" : "JOIN study_memberships sm ON sm.study_id = p.study_id AND sm.user_id = ? AND sm.is_active = TRUE";
@@ -953,7 +1059,7 @@ export async function createZipShiftApp() {
         ...safetyRows.map((row) => ({ id: `research-phq9-safety-${row.id}`, title: "PHQ-9 safety item needs review", message: `${row.pseudonym} · complete the safety-item review workflow before using the record`, createdAt: Number(row.created_at) })),
       ];
     }
-    res.json({ notifications: [...notices, ...careNotifications, ...researchNotifications, ...rows.map((row) => ({ id: row.id, title: eventLabels[row.event_type] || "Referral update", message: `${row.service_category} · ${row.case_number}`, createdAt: Number(row.created_at) }))] });
+    res.json({ notifications: [...notices, ...careNotifications, ...followUpNotifications, ...researchNotifications, ...rows.map((row) => ({ id: row.id, title: eventLabels[row.event_type] || "Referral update", message: `${row.service_category} · ${row.case_number}`, createdAt: Number(row.created_at) }))] });
   });
 
   app.get("/api/emergency-resources", (_req, res) => {
@@ -974,6 +1080,7 @@ export async function createZipShiftApp() {
     if (!accessRating || (!barriers.length && !narrative)) return res.status(400).json({ error: "Choose an access outcome and provide at least one barrier or note." });
     if (body.caseId && !session) return res.status(401).json({ error: "Sign in is required to attach feedback to a referral." });
     const caseId = body.caseId || null;
+    if (caseId && session && session.user.role !== "client" && !canAccessIdentifiedData(session.user)) return res.status(403).json({ error: RESEARCHER_FORBIDDEN_MESSAGE });
     if (caseId && session?.user.role === "client") {
       const [caseRows] = await db.query<RowDataPacket[]>("SELECT id FROM referral_cases WHERE id = ? AND client_id = ? LIMIT 1", [caseId, session.user.id]);
       if (!caseRows[0]) return res.status(404).json({ error: "Referral not found." });
@@ -1027,7 +1134,7 @@ export async function createZipShiftApp() {
   });
 
   app.get("/api/staff/cases", async (req, res) => {
-    const session = await requireRole(req, res, ["admin", "researcher"]);
+    const session = await requireIdentifiedStaff(req, res);
     if (!session) return;
     const status = String(req.query.status || "");
     const clauses = ["1 = 1"];
@@ -1048,7 +1155,7 @@ export async function createZipShiftApp() {
   });
 
   app.patch("/api/staff/cases/:caseId", async (req, res) => {
-    const session = await requireRole(req, res, ["admin", "researcher"]);
+    const session = await requireIdentifiedStaff(req, res);
     if (!session) return;
     const { status, priority, resolutionNotes } = req.body as { status?: CaseStatus; priority?: CasePriority; resolutionNotes?: string };
     const updates: string[] = ["updated_at = ?"];
@@ -1073,7 +1180,7 @@ export async function createZipShiftApp() {
   });
 
   app.post("/api/staff/navigator-events", async (req, res) => {
-    const session = await requireRole(req, res, ["admin", "researcher"]);
+    const session = await requireIdentifiedStaff(req, res);
     if (!session) return;
     const body = req.body as { caseId?: unknown; eventType?: unknown; details?: unknown; note?: unknown };
     const allowed = ["NAVIGATOR_MESSAGE_SENT", "NAVIGATOR_QUIET_HOURS_UPDATED", "NAVIGATOR_FHIR_PREVIEWED"];
@@ -1085,8 +1192,85 @@ export async function createZipShiftApp() {
     res.status(201).json({ success: true });
   });
 
-  app.get("/api/staff/yellowbook/cases/:caseId", async (req, res) => {
+  app.patch("/api/staff/cases/:caseId/housing-status", async (req, res) => {
+    const session = await requireIdentifiedStaff(req, res);
+    if (!session) return;
+    if (!canRecordAccessOutcome(session.user)) return res.status(403).json({ error: "Only administrators and care-team staff can edit housing status." });
+    const body = req.body as { housingStatus?: unknown; sdohConsent?: unknown };
+    const [rows] = await db.query<RowDataPacket[]>("SELECT id FROM referral_cases WHERE id = ? LIMIT 1", [req.params.caseId]);
+    if (!rows[0]) return res.status(404).json({ error: "Case not found." });
+    const consent = body.sdohConsent === true;
+    const housingStatus = normalizeHousingStatus(body.housingStatus, consent);
+    if (consent && body.housingStatus !== null && body.housingStatus !== undefined && body.housingStatus !== "" && !housingStatus) return res.status(400).json({ error: "Choose a supported housing status or prefer not to say." });
+    const timestamp = now();
+    // Withdrawing SDOH consent clears the stored value.
+    await db.execute("UPDATE referral_cases SET housing_status = ?, housing_status_updated_at = ?, sdoh_consent = ?, updated_at = ? WHERE id = ?", [housingStatus, housingStatus ? timestamp : null, consent, timestamp, req.params.caseId]);
+    await db.execute("INSERT INTO case_events (id, case_id, actor_user_id, event_type, event_data_json, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)", [randomUUID(), req.params.caseId, session.user.id, "HOUSING_STATUS_UPDATED", JSON.stringify({ recorded: Boolean(housingStatus), sdohConsent: consent }), "Housing information updated.", timestamp]);
+    res.json({ success: true, housingStatus, sdohConsent: consent });
+  });
+
+  app.get("/api/staff/cases/:caseId/outcomes", async (req, res) => {
+    const session = await requireIdentifiedStaff(req, res);
+    if (!session) return;
+    if (!canRecordAccessOutcome(session.user)) return res.status(403).json({ error: "Only administrators and care-team staff can view individual referral outcomes." });
+    const [rows] = await db.query<RowDataPacket[]>("SELECT id, outcome, barriers_json, connected_at, source, recorded_by_role, created_at FROM referral_access_outcomes WHERE case_id = ? ORDER BY created_at DESC, id DESC LIMIT 50", [req.params.caseId]);
+    res.json({ outcomes: rows.map((row) => ({ id: row.id, outcome: row.outcome, barriers: parseJson<string[]>(row.barriers_json, []), connectedAt: row.connected_at ? Number(row.connected_at) : null, source: row.source, recordedByRole: row.recorded_by_role || null, createdAt: Number(row.created_at) })) });
+  });
+
+  app.post("/api/staff/cases/:caseId/outcomes", async (req, res) => {
+    const session = await requireIdentifiedStaff(req, res);
+    if (!session) return;
+    if (!canRecordAccessOutcome(session.user)) return res.status(403).json({ error: "Only administrators and care-team staff can record referral outcomes." });
+    const [rows] = await db.query<RowDataPacket[]>("SELECT id, created_at, housing_status, sdoh_consent FROM referral_cases WHERE id = ? LIMIT 1", [req.params.caseId]);
+    if (!rows[0]) return res.status(404).json({ error: "Case not found." });
+    const validation = validateAccessOutcome(req.body, { caseCreatedAt: Number(rows[0].created_at), now: now() });
+    if (!validation.ok) return res.status(400).json({ error: validation.error });
+    const recorded = await recordAccessOutcome({ caseId: req.params.caseId, value: validation.value, source: "staff", actorUserId: session.user.id, actorRole: session.user.specialistRole || session.user.role, housingStatus: rows[0].sdoh_consent ? rows[0].housing_status || null : null });
+    res.status(201).json({ success: true, ...recorded, ...validation.value });
+  });
+
+  app.post("/api/cases/:caseId/outcome", async (req, res) => {
+    const session = await requireRole(req, res, ["client"]);
+    if (!session) return;
+    const [rows] = await db.query<RowDataPacket[]>("SELECT id, created_at, housing_status, sdoh_consent FROM referral_cases WHERE id = ? AND client_id = ? LIMIT 1", [req.params.caseId, session.user.id]);
+    if (!rows[0]) return res.status(404).json({ error: "Referral not found." });
+    const outcome = (req.body as { outcome?: unknown })?.outcome;
+    if (outcome !== "connected" && outcome !== "not_connected") return res.status(400).json({ error: "Tell us whether you got the help." });
+    const validation = validateAccessOutcome(req.body, { caseCreatedAt: Number(rows[0].created_at), now: now() });
+    if (!validation.ok) return res.status(400).json({ error: validation.error });
+    await recordAccessOutcome({ caseId: req.params.caseId, value: validation.value, source: "client", actorUserId: session.user.id, actorRole: "client", housingStatus: rows[0].sdoh_consent ? rows[0].housing_status || null : null });
+    res.status(201).json({ success: true });
+  });
+
+  const loadAccessOutcomeReport = async (periodDays: number) => {
+    const since = now() - periodDays * 24 * 60 * 60 * 1000;
+    const [caseRows] = await db.query<RowDataPacket[]>("SELECT id AS case_id, created_at, housing_status, sdoh_consent FROM referral_cases WHERE created_at >= ?", [since]);
+    const [ledgerRows] = await db.query<RowDataPacket[]>("SELECT o.case_id, o.outcome, o.barriers_json, o.housing_status_snapshot, o.connected_at, o.created_at FROM referral_access_outcomes o JOIN referral_cases c ON c.id = o.case_id WHERE c.created_at >= ?", [since]);
+    return buildAccessOutcomeReport(toOutcomeReportRows(caseRows as unknown as CaseOutcomeSourceRow[], ledgerRows as unknown as OutcomeLedgerSourceRow[]), MIN_CELL_SIZE);
+  };
+  const reportPeriod = (value: unknown) => { const days = Number(value); return [90, 180, 365, 730].includes(days) ? days : 365; };
+
+  app.get("/api/research/access-outcomes", async (req, res) => {
     const session = await requireRole(req, res, ["admin", "researcher"]);
+    if (!session) return;
+    const periodDays = reportPeriod(req.query.periodDays);
+    res.json({ periodDays, report: await loadAccessOutcomeReport(periodDays), methodology: `Referrals created in the last ${periodDays} days, grouped by consented housing status (HUD-aligned). Each referral counts once using its latest recorded outcome. Counts from 1 to ${MIN_CELL_SIZE - 1} are suppressed, with complementary suppression; rates and medians are hidden when any contributing count is suppressed. No individual-level records are returned.` });
+  });
+
+  app.get("/api/research/access-outcomes.csv", async (req, res) => {
+    const session = await requireRole(req, res, ["admin", "researcher"]);
+    if (!session) return;
+    const periodDays = reportPeriod(req.query.periodDays);
+    const csv = accessOutcomeReportToCsv(await loadAccessOutcomeReport(periodDays));
+    await db.execute("INSERT INTO generated_reports (id, requested_by, report_type, filters_json, created_at) VALUES (?, ?, ?, ?, ?)", [randomUUID(), session.user.id, "access-outcomes-aggregate", JSON.stringify({ periodDays, minimumCellSize: MIN_CELL_SIZE }), now()]);
+    await recordExportAudit(session, "access-outcomes-aggregate-csv", { identified: false, filters: { periodDays, minimumCellSize: MIN_CELL_SIZE } });
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename=zipshift-access-outcomes-aggregate-${periodDays}d.csv`);
+    res.send(csv);
+  });
+
+  app.get("/api/staff/yellowbook/cases/:caseId", async (req, res) => {
+    const session = await requireIdentifiedStaff(req, res);
     if (!session) return;
     const [rows] = await db.query<RowDataPacket[]>(
       `SELECT y.*, c.case_number
@@ -1099,7 +1283,7 @@ export async function createZipShiftApp() {
   });
 
   app.post("/api/staff/yellowbook", async (req, res) => {
-    const session = await requireRole(req, res, ["admin", "researcher"]);
+    const session = await requireIdentifiedStaff(req, res);
     if (!session) return;
     const body = req.body as Record<string, any>;
     if (!body.caseId || !body.patientName) return res.status(400).json({ error: "A case and patient name are required." });
@@ -1119,7 +1303,7 @@ export async function createZipShiftApp() {
   });
 
   app.get("/api/staff/yellowbook/:encounterId/events", async (req, res) => {
-    const session = await requireRole(req, res, ["admin", "researcher"]);
+    const session = await requireIdentifiedStaff(req, res);
     if (!session) return;
     const [encounterRows] = await db.query<RowDataPacket[]>("SELECT case_id, privacy_mode FROM yellowbook_encounters WHERE id = ? LIMIT 1", [req.params.encounterId]);
     if (!encounterRows[0]) return res.status(404).json({ error: "The YellowBook encounter could not be found." });
@@ -1135,7 +1319,7 @@ export async function createZipShiftApp() {
     res.json({ events: rows.map((row) => ({ eventType: row.event_type, note: privacyMode ? null : row.note || null, createdAt: Number(row.created_at), actorRole: privacyMode ? null : row.actor_role || null })) });
   });
   app.get("/api/staff/yellowbook/:encounterId/export.pdf", async (req, res) => {
-    const session = await requireRole(req, res, ["admin", "researcher"]);
+    const session = await requireIdentifiedStaff(req, res);
     if (!session) return;
     const [rows] = await db.query<RowDataPacket[]>("SELECT y.*, c.case_number FROM yellowbook_encounters y LEFT JOIN referral_cases c ON c.id = y.case_id WHERE y.id = ? LIMIT 1", [req.params.encounterId]);
     if (!rows[0]) return res.status(404).json({ error: "The YellowBook encounter could not be found." });
@@ -1154,11 +1338,12 @@ export async function createZipShiftApp() {
       plan: { immediate: encounter.plan.immediate || "", followUp: encounter.plan.followUp || "", referral: encounter.plan.referral || "" },
     });
     const bytes = pdf.output("arraybuffer");
+    await recordExportAudit(session, "yellowbook-encounter-pdf", { identified: true, rowCount: 1, targetId: req.params.encounterId });
     res.status(200).set({ "Content-Type": "application/pdf", "Content-Disposition": `attachment; filename="zipshift-yellowbook-${encounter.caseNumber}.pdf"` }).send(Buffer.from(bytes));
   });
 
   app.patch("/api/staff/yellowbook/:encounterId", async (req, res) => {
-    const session = await requireRole(req, res, ["admin", "researcher"]);
+    const session = await requireIdentifiedStaff(req, res);
     if (!session) return;
     const body = req.body as Record<string, any>;
     const statuses = ["active", "paused", "discontinued", "completed"];
@@ -1199,7 +1384,7 @@ export async function createZipShiftApp() {
   });
 
   app.get("/api/staff/reports/export", async (req, res) => {
-    const session = await requireRole(req, res, ["admin", "researcher"]);
+    const session = await requireIdentifiedStaff(req, res);
     if (!session) return;
     const [rows] = await db.query<RowDataPacket[]>(
       `SELECT c.case_number, c.service_category, c.status, c.priority, c.created_at, c.updated_at,
@@ -1211,6 +1396,7 @@ export async function createZipShiftApp() {
     );
     const csv = createCaseCsv(rows.map((row) => ({ caseNumber: row.case_number, clientName: row.client_name, serviceCategory: row.service_category, status: row.status, priority: row.priority, assignedName: row.assigned_name, createdAt: new Date(Number(row.created_at)).toISOString(), updatedAt: new Date(Number(row.updated_at)).toISOString() })));
     await db.execute("INSERT INTO generated_reports (id, requested_by, report_type, filters_json, created_at) VALUES (?, ?, ?, ?, ?)", [randomUUID(), session.user.id, "case-export", JSON.stringify({}), now()]);
+    await recordExportAudit(session, "case-report-csv", { identified: true, rowCount: rows.length });
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
     res.setHeader("Content-Disposition", "attachment; filename=zipshift-case-report.csv");
     res.send(csv);
@@ -1247,7 +1433,7 @@ export async function createZipShiftApp() {
     const sha256 = createHash("sha256").update(buffer).digest("hex"); const stored = await storagePut(`case-documents/${req.params.caseId}/${name.replace(/[^a-zA-Z0-9._-]/g, "_")}`, buffer, "application/pdf"); const fileId = randomUUID(); const timestamp = now();
     await db.execute("INSERT INTO case_document_files (id, case_id, packet_form_id, original_filename, storage_key, storage_url, mime_type, byte_size, sha256, uploaded_by, uploaded_at) VALUES (?, ?, ?, ?, ?, ?, 'application/pdf', ?, ?, ?, ?)", [fileId, req.params.caseId, packetFormId, name, stored.key, stored.url, buffer.length, sha256, session.user.id, timestamp]); await db.execute("INSERT INTO case_document_audit_events (id, case_id, file_id, actor_user_id, action, details_json, created_at) VALUES (?, ?, ?, ?, 'PDF_UPLOADED', ?, ?)", [randomUUID(), req.params.caseId, fileId, session.user.id, JSON.stringify({ originalFilename: name, byteSize: buffer.length, sha256, packetFormId }), timestamp]); res.status(201).json({ id: fileId, sha256 });
   });
-  app.get("/api/care-portal/files/:fileId/download", async (req, res) => { const session = await requireCareTeam(req, res); if (!session) return; const [rows] = await db.query<RowDataPacket[]>("SELECT storage_key FROM case_document_files WHERE id = ? LIMIT 1", [req.params.fileId]); if (!rows[0]) return res.status(404).json({ error: "Document not found." }); res.redirect(await storageGetSignedUrl(rows[0].storage_key)); });
+  app.get("/api/care-portal/files/:fileId/download", async (req, res) => { const session = await requireCareTeam(req, res); if (!session) return; const [rows] = await db.query<RowDataPacket[]>("SELECT storage_key FROM case_document_files WHERE id = ? LIMIT 1", [req.params.fileId]); if (!rows[0]) return res.status(404).json({ error: "Document not found." }); await recordExportAudit(session, "case-document-pdf-download", { identified: true, rowCount: 1, targetId: req.params.fileId }); res.redirect(await storageGetSignedUrl(rows[0].storage_key)); });
   app.patch("/api/care-portal/files/:fileId/status", async (req, res) => {
     const session = await requireCareTeam(req, res); if (!session) return;
     const nextStatus = req.body?.status;
@@ -1768,16 +1954,19 @@ export async function createZipShiftApp() {
     const session = await requireRole(req, res, ["admin", "researcher"]); if (!session) return;
     if (!(await hasStudyAccess(session, req.params.studyId))) return res.status(403).json({ error: "You are not assigned to this study." });
     const [rows] = await db.query<RowDataPacket[]>(`SELECT p.id, p.pseudonym, p.enrollment_status, p.consented_at, p.withdrawn_at, p.retention_until, p.created_at, p.updated_at,
-        c.case_number,
+        p.case_id, c.case_number,
         (SELECT COUNT(*) FROM research_assessments a WHERE a.participant_control_id = p.id AND a.status = 'complete') AS assessment_count,
         (SELECT MAX(a.created_at) FROM research_assessments a WHERE a.participant_control_id = p.id AND a.status = 'complete') AS last_assessment_at
       FROM research_participant_controls p JOIN referral_cases c ON c.id = p.case_id
       WHERE p.study_id = ? ORDER BY p.updated_at DESC`, [req.params.studyId]);
-    res.json({ participants: rows.map((row) => ({ id: row.id, pseudonym: row.pseudonym, enrollmentStatus: row.enrollment_status, caseNumber: row.case_number, consentedAt: Number(row.consented_at), withdrawnAt: row.withdrawn_at ? Number(row.withdrawn_at) : null, retentionUntil: row.retention_until ? Number(row.retention_until) : null, assessmentCount: Number(row.assessment_count || 0), lastAssessmentAt: row.last_assessment_at ? Number(row.last_assessment_at) : null, createdAt: Number(row.created_at), updatedAt: Number(row.updated_at) })) });
+        // Research-only accounts get a keyed pseudonym in place of the referral's case number.
+    const identified = canAccessIdentifiedData(session.user);
+    res.json({ participants: rows.map((row) => ({ id: row.id, pseudonym: row.pseudonym, participantKey: pseudonymousId(String(row.case_id)), enrollmentStatus: row.enrollment_status, caseNumber: identified ? row.case_number : null, consentedAt: Number(row.consented_at), withdrawnAt: row.withdrawn_at ? Number(row.withdrawn_at) : null, retentionUntil: row.retention_until ? Number(row.retention_until) : null, assessmentCount: Number(row.assessment_count || 0), lastAssessmentAt: row.last_assessment_at ? Number(row.last_assessment_at) : null, createdAt: Number(row.created_at), updatedAt: Number(row.updated_at) })) });
   });
 
   app.post("/api/research/studies/:studyId/participant-controls", async (req, res) => {
-    const session = await requireRole(req, res, ["admin", "researcher"]); if (!session) return;
+    // Enrolling means choosing an identified referral, so it stays with admins and care-team staff.
+    const session = await requireIdentifiedStaff(req, res); if (!session) return;
     if (!(await hasStudyAccess(session, req.params.studyId))) return res.status(403).json({ error: "You are not assigned to this study." });
     const body = req.body as { caseId?: unknown; retentionUntil?: unknown };
     if (typeof body.caseId !== "string") return res.status(400).json({ error: "Choose a case to enroll." });
@@ -1854,6 +2043,7 @@ export async function createZipShiftApp() {
     const escape = (value: unknown) => `"${String(value ?? "").replaceAll('"', '""')}"`;
     const csvRows = [["Study ID", "Enrollment Status", "Retention Until", "Instrument", "Instrument Version", "Score", "Assessment Status", "Recorded At"], ...rows.map((row) => [row.pseudonym, row.enrollment_status, row.retention_until ? new Date(Number(row.retention_until)).toISOString() : "", row.instrument_key, row.instrument_version, row.score, row.status, row.created_at ? new Date(Number(row.created_at)).toISOString() : ""])];
     await db.execute("INSERT INTO generated_reports (id, requested_by, report_type, filters_json, created_at) VALUES (?, ?, ?, ?, ?)", [randomUUID(), session.user.id, "research-deidentified-export", JSON.stringify({ studyId: req.params.studyId }), now()]);
+    await recordExportAudit(session, "research-study-pseudonymous-csv", { identified: false, rowCount: rows.length, targetId: req.params.studyId, filters: { studyId: req.params.studyId } });
     res.setHeader("Content-Type", "text/csv; charset=utf-8"); res.setHeader("Content-Disposition", "attachment; filename=zipshift-research-deidentified.csv"); res.send(csvRows.map((row) => row.map(escape).join(",")).join("\n"));
   });
 
