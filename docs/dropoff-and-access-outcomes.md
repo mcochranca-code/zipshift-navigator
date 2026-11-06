@@ -59,12 +59,31 @@ Each referral counts once, by its latest outcome. Housing status is taken as it 
 - Research output is aggregate only. Cells of 1–10 are suppressed, with complementary suppression across outcome cells and across housing groups. Rates and medians are hidden when any count they depend on is suppressed. The CSV holds aggregate cells only, and each download is logged in `generated_reports`.
 - The client-visible timeline note is neutral ("Referral follow-up recorded"), and barrier codes stay in event data.
 
+## Researcher access lockdown
+
+Three access tiers, from `shared/accessPolicy.ts`:
+
+| Tier | Account | Identified referral data and referral writes |
+| --- | --- | --- |
+| admin | role `admin` | yes |
+| care team | role `researcher` with a `specialist_role` | yes |
+| researcher | role `researcher` with no `specialist_role` | no |
+
+- **Enforced on the server, before any handler.** `server/researchAccess.ts` holds an allowlist. A research-only session can reach public reference data, its own session and profile, de-identified aggregates (Access outcomes view and CSV, report summary, ZIP demand, field-test counts), and pseudonymous study records for studies it belongs to. Every other `/api` route returns 403, including any route added later, until someone allowlists it on purpose. Handlers keep their own checks as a second layer (`requireIdentifiedStaff`, `requireCareTeam`, `canAccessCase`).
+- **Row-level research data is pseudonymous.** The study participant list gives research-only accounts `caseNumber: null` and a `participantKey`, which is HMAC-SHA256 of the case ID under `RESEARCH_PSEUDONYM_SECRET`. Enrolling a case in a study needs the identified referral, so only admins and care-team staff can do it.
+- **Every export is audited.** `admin_audit_log` gets a `DATA_EXPORTED` row for each export, with the export type, the actor's role and tier, whether the export holds identifiers, the row count, and the filters, never client data. This covers the case CSV, the aggregate outcomes CSV, the pseudonymous study CSV, the YellowBook PDF, and care-portal PDF downloads.
+- **The UI matches the server.** Research-only accounts see Analytics, Access outcomes, Research and Reports. Cases, Navigator, YellowBook, the case CSV button, study enrollment, the case-number column, and the care-workspace shortcuts are hidden.
+- **Tests.** `server/researchAccess.test.ts` reads every route from `server/index.ts` and fails if the researcher allowlist changes without the test changing too. `server/researcherLockdown.test.ts` runs the real app against an in-memory database. It checks that a researcher gets 403 on every non-allowlisted route, that the aggregate and study exports contain no names, contact details, DOB, addresses, notes, case numbers or case IDs, and that each export writes an audit row.
+
+Set `RESEARCH_PSEUDONYM_SECRET` (32+ random bytes) in production. Without it, a per-process secret is used, so the IDs never reveal a case ID but change on every restart.
+
 ## Not done / for the owner
 
-- Researchers who are not on the care team can still see identified case lists through the existing `/api/staff/cases` and the case CSV, which includes client names, and can PATCH cases. These existing routes were left unchanged. It is worth restricting them to minimum necessary.
 - `getDistanceLabel` still uses hard-coded distances and shows "2.0 mi" when unknown. The "~min drive" estimate assumes 30 mph. Both should be computed from the user's location or hidden.
 - No public status lookup by referral code. It would need rate limiting and a privacy review, because a lookup confirms that someone sought help.
 - The field-ops offline queue (risk 9).
 - The SDOH consent is a checkbox, not a versioned consent document like research participation. Decide whether it should be one. An IRB or data-use agreement may also be needed before publishing.
 - HUD mapping is approximate. "Doubled-up" counts as homelessness under McKinney-Vento, not under HUD Category 1.
+- Research-only accounts can still record PHQ-9/PRAPARE assessments and set retention or withdrawal on pseudonymous study participants. These are research records, not referral edits. PRAPARE responses are free-form JSON, though, so staff could type identifying text into them. Consider restricting PRAPARE to coded answers.
+- The report summary's per-status case counts and the field-test counts are not small-cell suppressed. They are system-wide totals with no demographic breakdown.
 - The migration has not been applied anywhere. The DB integration tests are skipped without a database.

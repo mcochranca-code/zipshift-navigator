@@ -14,6 +14,7 @@ import CountyResourceDirectory from "../components/CountyResourceDirectory";
 import ClientQuickGuideModal from "../components/ClientQuickGuideModal";
 import ReferralDestinationFlow from "../components/ReferralDestinationFlow";
 import RolePortal from "../components/RolePortal";
+import { isResearchOnly } from "../../../shared/accessPolicy";
 import StaffIntakeFlow from "../components/StaffIntakeFlow";
 import ReferralsDispatch from "../components/ReferralsDispatch";
 import CareCoordinationPortal from "../components/CareCoordinationPortal";
@@ -68,6 +69,7 @@ interface ClientSessionUser {
   email: string;
   displayName: string;
   role: "client" | "admin" | "researcher";
+  specialistRole?: string | null;
 }
 
 type GlobalEditorSettings = {
@@ -2198,6 +2200,11 @@ export default function Home() {
 
   if (screen === "role-portal") {
     return <div key={screen} className="zs-screen"><RolePortal user={sessionUser} onNavigate={(destination) => setScreen(destination as Screen)} /></div>;
+  }
+  // Identified care workspaces are closed to research-only accounts (the API
+  // answers 403); send them to the de-identified research workspace instead.
+  if (isResearchOnly(sessionUser) && (screen === "staff-intake" || screen === "referrals-dispatch" || screen === "care-coordination" || screen === "specialist-dashboard")) {
+    return <div key="researcher-analytics" className="zs-screen"><ResearcherAnalytics onBack={() => setScreen("home")} onSessionChange={handleWorkspaceSession} /></div>;
   }
   if (screen === "staff-intake") {
     return <div key={screen} className="zs-screen"><StaffIntakeFlow onBack={() => setScreen("role-portal")} onComplete={() => setScreen("referrals-dispatch")} /></div>;
