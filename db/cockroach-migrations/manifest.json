@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-20T00:16:57.262Z",
+  "generatedAt": "2026-11-06T22:33:42.263Z",
   "inputDir": "server/migrations",
   "outputDir": "db/cockroach-migrations",
   "files": [
@@ -115,6 +115,14 @@
       "sha256": "90bfbbf6c7dedfcd81107b235549700ed2b9da50ca9fa7c2aeee2dd9355d116a",
       "warnings": [
         "20261019_add_cursor_indexes_and_event_idempotency.sql: CHAR(36) identifiers are preserved for compatibility; native UUID conversion is deferred"
+      ]
+    },
+    {
+      "source": "20261106_add_access_outcomes_and_housing_status.sql",
+      "output": "20261106_add_access_outcomes_and_housing_status.cockroach.sql",
+      "sha256": "6271f3301fd35ccec5e2cf466a4417448b9249336c92c3111966444722c6af69",
+      "warnings": [
+        "20261106_add_access_outcomes_and_housing_status.sql: CHAR(36) identifiers are preserved for compatibility; native UUID conversion is deferred"
       ]
     }
   ]
