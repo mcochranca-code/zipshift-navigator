@@ -1,18 +1,23 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { BarChart3, BookOpen, ClipboardCheck, ClipboardList, Download, FileJson, FlaskConical, FolderKanban, ImageDown, LayoutDashboard, MessageSquare, Send, Settings2, ShieldCheck, UsersRound, type LucideIcon } from "lucide-react";
 import YellowBookEncounter from "./YellowBookEncounter";
 import AdminControlCenter from "./AdminControlCenter";
+import AccessOutcomeRecorder from "./AccessOutcomeRecorder";
+import AccessOutcomesPanel from "./AccessOutcomesPanel";
+import { useDialogA11y } from "../lib/a11y";
+import { ACCESS_OUTCOME_LABELS, HOUSING_STATUS_LABELS, isAccessOutcome, isHousingStatus } from "../../../shared/accessOutcomes";
 
 type StaffRole = "admin" | "researcher";
-type StaffSection = "overview" | "navigator" | "directory" | "cases" | "research" | "yellowbook" | "reports" | "team";
+type StaffSection = "overview" | "outcomes" | "navigator" | "directory" | "cases" | "research" | "yellowbook" | "reports" | "team";
 
-const sectionIcons: Record<StaffSection, LucideIcon> = { overview: LayoutDashboard, navigator: UsersRound, directory: FolderKanban, cases: ClipboardList, research: FlaskConical, yellowbook: BookOpen, reports: BarChart3, team: Settings2 };
+const sectionIcons: Record<StaffSection, LucideIcon> = { overview: LayoutDashboard, outcomes: ClipboardCheck, navigator: UsersRound, directory: FolderKanban, cases: ClipboardList, research: FlaskConical, yellowbook: BookOpen, reports: BarChart3, team: Settings2 };
 
 interface WorkspaceUser {
   id: string;
   email: string;
   displayName: string;
   role: StaffRole | "client";
+  specialistRole?: string | null;
 }
 
 interface CaseRecord {
@@ -27,6 +32,11 @@ interface CaseRecord {
   assignedTo: string | null;
   studyId?: string | null;
   resolutionNotes: string;
+  housingStatus?: string | null;
+  sdohConsent?: boolean;
+  contactPreference?: string | null;
+  accessOutcome?: string | null;
+  connectedAt?: number | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -89,6 +99,7 @@ const ZIPSHIFT_LOGO = "/manus-storage/zipshift_logo_cleaned_354ed835.png";
 
 const sectionLabels: Record<StaffSection, string> = {
   overview: "Analytics",
+  outcomes: "Access outcomes",
   navigator: "Navigator",
   directory: "Directory",
   cases: "Cases",
@@ -241,7 +252,7 @@ export default function StaffWorkspace({ role, onBack, onSessionChange }: StaffW
   const [teamForm, setTeamForm] = useState({ displayName: "", email: "", password: "", role: "researcher" });
   const [teamMessage, setTeamMessage] = useState<string | null>(null);
 
-  const navigation = useMemo<StaffSection[]>(() => role === "admin" ? ["overview", "navigator", "directory", "cases", "research", "yellowbook", "reports", "team"] : ["overview", "navigator", "cases", "research", "yellowbook", "reports"], [role]);
+  const navigation = useMemo<StaffSection[]>(() => role === "admin" ? ["overview", "outcomes", "navigator", "directory", "cases", "research", "yellowbook", "reports", "team"] : ["overview", "outcomes", "navigator", "cases", "research", "yellowbook", "reports"], [role]);
 
   const loadSession = async () => {
     setCheckingSession(true);
@@ -359,6 +370,11 @@ export default function StaffWorkspace({ role, onBack, onSessionChange }: StaffW
     const nextStatus: Record<string, CaseRecord["status"]> = { new: "in_progress", in_progress: "pending", pending: "completed" };
     const status = nextStatus[record.status];
     if (!status) return;
+    if (status === "completed" && !record.accessOutcome) {
+      // Closing the loop needs an outcome: open the case so staff record whether the person was connected.
+      setSelectedCase({ ...record });
+      return;
+    }
     try {
       await requestJson(`/api/staff/cases/${record.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status, resolutionNotes: `Navigator stage advanced to ${status.replaceAll("_", " ")}.` }) });
       await loadCases();
@@ -387,8 +403,8 @@ export default function StaffWorkspace({ role, onBack, onSessionChange }: StaffW
   if (checkingSession) return <div className="min-h-screen bg-slate-100 flex items-center justify-center text-sm font-medium text-slate-500">Loading secure workspace…</div>;
   if (!user || user.role !== role) return <LoginPanel role={role} onAuthenticated={() => { setActiveSection(role === "admin" ? "team" : "overview"); void loadSession(); }} onBack={onBack} />;
 
-  const title = activeSection === "overview" ? "Researcher Analytics" : activeSection === "navigator" ? "Navigator Caseload" : activeSection === "directory" ? "Service Directory" : activeSection === "cases" ? (role === "admin" ? "Referrals & Cases" : "Research Cases") : activeSection === "research" ? "Research & Data" : activeSection === "yellowbook" ? "YellowBook Encounter" : activeSection === "reports" ? "Reports & Exports" : "Role-based Staff Access";
-  const subtitle = activeSection === "overview" ? "Analyze live case activity, provider coverage, and HSAI-ready event signals." : activeSection === "navigator" ? "Coordinate pseudonymized caseloads, referral stages, secure chat, and FHIR previews." : activeSection === "directory" ? "Browse the imported Stanislaus and Turlock resource directory, with provenance retained." : activeSection === "cases" ? "Track secure service requests, assign outcomes, and close the loop on access." : activeSection === "research" ? "Enroll consented participants, collect versioned measures, and preserve retention controls." : activeSection === "yellowbook" ? "Open a Ceramic-style, case-linked encounter record with adaptive HSAI prompts." : activeSection === "reports" ? "Generate audit-ready summaries and export real case activity." : "Create restricted Administrator and Researcher accounts.";
+  const title = activeSection === "outcomes" ? "Access Outcomes" : activeSection === "overview" ? "Researcher Analytics" : activeSection === "navigator" ? "Navigator Caseload" : activeSection === "directory" ? "Service Directory" : activeSection === "cases" ? (role === "admin" ? "Referrals & Cases" : "Research Cases") : activeSection === "research" ? "Research & Data" : activeSection === "yellowbook" ? "YellowBook Encounter" : activeSection === "reports" ? "Reports & Exports" : "Role-based Staff Access";
+  const subtitle = activeSection === "outcomes" ? "Whether people reach referred services, how long it takes, and what blocks them — by housing status, de-identified." : activeSection === "overview" ? "Analyze live case activity, provider coverage, and HSAI-ready event signals." : activeSection === "navigator" ? "Coordinate pseudonymized caseloads, referral stages, secure chat, and FHIR previews." : activeSection === "directory" ? "Browse the imported Stanislaus and Turlock resource directory, with provenance retained." : activeSection === "cases" ? "Track secure service requests, assign outcomes, and close the loop on access." : activeSection === "research" ? "Enroll consented participants, collect versioned measures, and preserve retention controls." : activeSection === "yellowbook" ? "Open a Ceramic-style, case-linked encounter record with adaptive HSAI prompts." : activeSection === "reports" ? "Generate audit-ready summaries and export real case activity." : "Create restricted Administrator and Researcher accounts.";
 
   return (
     <div className="min-h-screen bg-[#f7f9fc] text-[#142846] lg:flex">
@@ -405,6 +421,7 @@ export default function StaffWorkspace({ role, onBack, onSessionChange }: StaffW
         {error && <div className="mb-5 flex items-center justify-between rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700"><span>{error}</span><button onClick={() => setError(null)} className="font-bold">×</button></div>}
 
         {activeSection === "overview" && <AnalyticsPanel report={report} fieldTest={fieldTest} loading={loadingData} onOpenReports={() => setActiveSection("reports")} onOpenCases={() => setActiveSection("cases")} />}
+        {activeSection === "outcomes" && <AccessOutcomesPanel />}
         {activeSection === "navigator" && <NavigatorPanel cases={cases} loading={loadingData} onAdvance={(record) => void advanceNavigatorCase(record)} onSelect={(record) => setSelectedCase({ ...record })} onOpenFhir={(record) => { setFhirCase(record); void requestJson("/api/staff/navigator-events", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ caseId: record.id, eventType: "NAVIGATOR_FHIR_PREVIEWED", details: { caseNumber: record.caseNumber } }) }).catch((err) => setError(err instanceof Error ? err.message : "Unable to log the FHIR preview.")); }} />}
         {activeSection === "directory" && <DirectoryPanel loading={loadingData} resources={directory} search={directorySearch} onSearch={setDirectorySearch} onSubmit={() => void loadDirectory()} />}
         {activeSection === "cases" && <CasesPanel cases={cases} loading={loadingData} filter={caseStatus} onFilter={setCaseStatus} onSelect={setSelectedCase} onOpenYellowBook={(record) => { setYellowBookCase(record); setActiveSection("yellowbook"); }} />}
@@ -414,7 +431,7 @@ export default function StaffWorkspace({ role, onBack, onSessionChange }: StaffW
         {activeSection === "team" && <div className="space-y-6"><TeamPanel form={teamForm} message={teamMessage} onChange={setTeamForm} onSubmit={createStaff} /><AdminControlCenter /></div>}
       </main>
 
-      {selectedCase && <CaseDetailModal caseRecord={selectedCase} onChange={setSelectedCase} onClose={() => setSelectedCase(null)} onSave={() => void updateCase()} />}
+      {selectedCase && <CaseDetailModal caseRecord={selectedCase} canRecordOutcome={user.role === "admin" || Boolean(user.specialistRole)} onChange={setSelectedCase} onOutcomeRecorded={(update) => { setSelectedCase((current) => current ? { ...current, ...update } : current); setCases((current) => current.map((record) => record.id === selectedCase.id ? { ...record, ...update } : record)); }} onClose={() => setSelectedCase(null)} onSave={() => void updateCase()} />}
       {fhirCase && <FhirPreviewModal record={fhirCase} onClose={() => setFhirCase(null)} />}
     </div>
   );
@@ -578,6 +595,10 @@ function TeamPanel({ form, message, onChange, onSubmit }: { form: { displayName:
   return <div className="max-w-2xl rounded-xl border border-slate-200 bg-white p-6"><h2 className="text-xl font-black">Create staff account</h2><p className="mt-1 text-sm text-slate-500">Create a proper database-backed account for an Administrator or Researcher. Client accounts are created through the Navigator profile flow.</p>{message && <div className="mt-5 rounded-lg border border-teal-200 bg-teal-50 p-3 text-sm text-[#148d84]">{message}</div>}<form onSubmit={onSubmit} className="mt-6 grid gap-4 md:grid-cols-2"><label className="text-sm font-bold text-slate-700">Display name<input required value={form.displayName} onChange={(event) => onChange({ ...form, displayName: event.target.value })} className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2.5 outline-none focus:border-brand" /></label><label className="text-sm font-bold text-slate-700">Email<input required type="email" value={form.email} onChange={(event) => onChange({ ...form, email: event.target.value })} className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2.5 outline-none focus:border-brand" /></label><label className="text-sm font-bold text-slate-700">Role<select value={form.role} onChange={(event) => onChange({ ...form, role: event.target.value })} className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 outline-none focus:border-brand"><option value="researcher">Researcher</option><option value="admin">Administrator</option></select></label><label className="text-sm font-bold text-slate-700">Temporary password<input required minLength={12} type="password" value={form.password} onChange={(event) => onChange({ ...form, password: event.target.value })} className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2.5 outline-none focus:border-brand" placeholder="At least 12 characters" /></label><div className="md:col-span-2"><button className="rounded-lg bg-brand px-5 py-3 text-sm font-bold text-white hover:bg-[#0d8077]">Create staff account</button></div></form></div>;
 }
 
-function CaseDetailModal({ caseRecord, onChange, onClose, onSave }: { caseRecord: CaseRecord; onChange: (record: CaseRecord) => void; onClose: () => void; onSave: () => void }) {
-  return <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/35 p-4 sm:items-center"><div className="w-full max-w-xl rounded-2xl bg-white p-6 shadow-2xl"><div className="flex items-start justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-wide text-[#148d84]">{caseRecord.caseNumber}</p><h2 className="mt-1 text-2xl font-black">{caseRecord.clientName}</h2><p className="mt-1 text-sm text-slate-500">{caseRecord.serviceCategory} · created {formatDate(caseRecord.createdAt)}</p></div><button onClick={onClose} className="rounded-lg p-2 text-xl text-slate-500 hover:bg-slate-100">×</button></div><div className="mt-6 grid gap-4 sm:grid-cols-2"><label className="text-sm font-bold text-slate-700">Status<select value={caseRecord.status} onChange={(event) => onChange({ ...caseRecord, status: event.target.value as CaseRecord["status"] })} className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 outline-none focus:border-brand">{STATUS_OPTIONS.map((status) => <option key={status} value={status}>{status.replace("_", " ")}</option>)}</select></label><label className="text-sm font-bold text-slate-700">Priority<select value={caseRecord.priority} onChange={(event) => onChange({ ...caseRecord, priority: event.target.value as CaseRecord["priority"] })} className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 outline-none focus:border-brand">{PRIORITY_OPTIONS.map((priority) => <option key={priority} value={priority}>{priority}</option>)}</select></label></div><label className="mt-4 block text-sm font-bold text-slate-700">Resolution notes<textarea value={caseRecord.resolutionNotes} onChange={(event) => onChange({ ...caseRecord, resolutionNotes: event.target.value })} className="mt-1.5 min-h-32 w-full rounded-lg border border-slate-200 px-3 py-2.5 outline-none focus:border-brand" placeholder="Record coordination steps, confirmation, or follow-up." /></label><div className="mt-6 flex justify-end gap-3"><button onClick={onClose} className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-600">Cancel</button><button onClick={onSave} className="rounded-lg bg-brand px-4 py-2.5 text-sm font-bold text-white">Save case</button></div></div></div>;
+function CaseDetailModal({ caseRecord, canRecordOutcome, onChange, onOutcomeRecorded, onClose, onSave }: { caseRecord: CaseRecord; canRecordOutcome: boolean; onChange: (record: CaseRecord) => void; onOutcomeRecorded: (update: Partial<CaseRecord>) => void; onClose: () => void; onSave: () => void }) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useDialogA11y(dialogRef, true, onClose);
+  const closing = caseRecord.status === "completed" || caseRecord.status === "closed";
+  const titleId = `case-detail-${caseRecord.id}`;
+  return <div className="fixed inset-0 z-50 flex items-end justify-center overflow-y-auto bg-slate-950/35 p-4 sm:items-center"><div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby={titleId} className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl"><div className="flex items-start justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-wide text-[#148d84]">{caseRecord.caseNumber}</p><h2 id={titleId} className="mt-1 text-2xl font-black">{caseRecord.clientName}</h2><p className="mt-1 text-sm text-slate-500">{caseRecord.serviceCategory} · created {formatDate(caseRecord.createdAt)}{isHousingStatus(caseRecord.housingStatus) ? ` · ${HOUSING_STATUS_LABELS[caseRecord.housingStatus].en}` : ""}{isAccessOutcome(caseRecord.accessOutcome) ? ` · ${ACCESS_OUTCOME_LABELS[caseRecord.accessOutcome]}` : ""}</p></div><button type="button" onClick={onClose} aria-label="Close case details" className="rounded-lg p-2 text-xl text-slate-500 hover:bg-slate-100"><span aria-hidden="true">×</span></button></div><div className="mt-6 grid gap-4 sm:grid-cols-2"><label className="text-sm font-bold text-slate-700">Status<select value={caseRecord.status} onChange={(event) => onChange({ ...caseRecord, status: event.target.value as CaseRecord["status"] })} className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 outline-none focus:border-brand">{STATUS_OPTIONS.map((status) => <option key={status} value={status}>{status.replace("_", " ")}</option>)}</select></label><label className="text-sm font-bold text-slate-700">Priority<select value={caseRecord.priority} onChange={(event) => onChange({ ...caseRecord, priority: event.target.value as CaseRecord["priority"] })} className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 outline-none focus:border-brand">{PRIORITY_OPTIONS.map((priority) => <option key={priority} value={priority}>{priority}</option>)}</select></label></div>{closing && !caseRecord.accessOutcome && <p role="status" className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">Before closing, record below whether the person actually got the service. "Completed" alone does not tell us they were connected.</p>}<label className="mt-4 block text-sm font-bold text-slate-700">Resolution notes<textarea value={caseRecord.resolutionNotes} onChange={(event) => onChange({ ...caseRecord, resolutionNotes: event.target.value })} className="mt-1.5 min-h-24 w-full rounded-lg border border-slate-200 px-3 py-2.5 outline-none focus:border-brand" placeholder="Record coordination steps, confirmation, or follow-up." /></label><AccessOutcomeRecorder caseRecord={caseRecord} canRecord={canRecordOutcome} onRecorded={(update) => onOutcomeRecorded(update as Partial<CaseRecord>)} /><div className="mt-6 flex justify-end gap-3"><button type="button" onClick={onClose} className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-600">Cancel</button><button type="button" onClick={onSave} className="rounded-lg bg-brand px-4 py-2.5 text-sm font-bold text-white">Save case</button></div></div></div>;
 }
