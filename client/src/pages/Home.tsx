@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import { Accessibility, Activity, ArrowLeft, ArrowRight, Bell, Brain, Building2, BusFront, CalendarDays, CheckCircle2, ChevronRight, CircleHelp, Clock3, ClipboardList, FileText, Globe2, Heart, HeartPulse, Home as HomeIcon, House, Info, Landmark, Map, MapPin, Menu, MessageSquare, MoreHorizontal, Navigation, Phone, Scale, Search, Settings, ShieldCheck, SlidersHorizontal, Sparkles, Stethoscope, UserCircle, UsersRound, Utensils, X } from "lucide-react";
 import ZipShiftMap from "../components/ZipShiftMap";
@@ -20,6 +20,9 @@ import CareCoordinationPortal from "../components/CareCoordinationPortal";
 import SpecialistDashboard from "../components/SpecialistDashboard";
 import GuidedAccess from "../components/GuidedAccess";
 import providersData from "../data/providers.json";
+import { announce, useDialogA11y, useScreenChangeFocus } from "../lib/a11y";
+import { BrandedSplash } from "../components/motion/Loaders";
+import Breadcrumbs from "../components/Breadcrumbs";
 
 interface Provider {
   record_id: string;
@@ -113,8 +116,8 @@ function getProviderLogo(provider: Provider) {
 }
 
 const CATEGORIES: Array<{ id: string; label: string; icon: LucideIcon; color: string }> = [
-  { id: "emergency-shelter", label: "Emergency\nShelter", icon: House, color: "#159d92" },
-  { id: "food-meals", label: "Food &\nMeals", icon: Utensils, color: "#16a34a" },
+  { id: "emergency-shelter", label: "Emergency\nShelter", icon: House, color: "var(--zs-color-brand)" },
+  { id: "food-meals", label: "Food &\nMeals", icon: Utensils, color: "#15803d" },
   { id: "medical", label: "Medical", icon: Stethoscope, color: "#dc2626" },
   { id: "behavioral-health", label: "Behavioral\nHealth", icon: Brain, color: "#7c3aed" },
   { id: "housing", label: "Housing\nAccess", icon: Building2, color: "#d97706" },
@@ -193,8 +196,27 @@ function getCategoryIcon(catId: string): LucideIcon {
 }
 
 function getCategoryColor(catId: string): string {
-  return CATEGORIES.find((c) => c.id === catId)?.color ?? "#159d92";
+  return CATEGORIES.find((c) => c.id === catId)?.color ?? "var(--zs-color-brand)";
 }
+
+// Renders an inline render-function as a STABLE component type. Home builds
+// its chrome (header, menus, nav) as closures; rendering them as `<RenderSlot render={Header} />`
+// created a new component type every render, remounting the DOM and dropping
+// keyboard focus. `<RenderSlot render={Header} />` keeps the DOM stable.
+function RenderSlot<P extends object>({ render, ...props }: { render: (props: P) => ReactNode } & P) {
+  return <>{render(props as unknown as P)}</>;
+}
+
+// Announced (and used as document.title) when the screen changes.
+const SCREEN_TITLES: Partial<Record<Screen, string>> = {
+  home: "Home", map: "Resource map", favorites: "Saved resources", gethelp: "Get help", more: "More",
+  "search-results": "Search results", "resource-detail": "Resource detail", "before-you-go": "Before you go", directions: "Directions",
+  about: "About", privacy: "Privacy", terms: "Terms", feedback: "Feedback", settings: "Settings",
+  "intake-form": "Intake form", "admin-dashboard": "Admin workspace", "researcher-analytics": "Research workspace", "referral-history": "Referral history",
+  "client-profile": "Profile", "client-directory": "Client directory", "county-directory": "County resource directory", "emergency-directory": "Emergency resources",
+  notifications: "Notifications", "referral-destination": "Referral destination", "role-portal": "Choose a workspace", "staff-intake": "Staff intake",
+  "referrals-dispatch": "Referrals dispatch", "care-coordination": "Care coordination", "specialist-dashboard": "Specialist dashboard", "guided-entry": "Guided start",
+};
 
 function CategoryGlyph({ catId, size = 24 }: { catId: string; size?: number }) {
   const Icon = getCategoryIcon(catId);
@@ -208,6 +230,9 @@ export default function Home() {
   const [language, setLanguage] = useState<"en" | "es">("en");
   const [darkMode, setDarkMode] = useState(false);
   const [largeText, setLargeText] = useState(false);
+  const [reduceMotion, setReduceMotion] = useState(() => {
+    try { return localStorage.getItem("zipshift.reduceMotion") === "true"; } catch { return false; }
+  });
   const [menuOpen, setMenuOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try { return localStorage.getItem("zipshift.sidebar.collapsed") === "true"; } catch { return false; }
@@ -258,6 +283,9 @@ export default function Home() {
   const authenticatedSession = useRef(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const mobileDrawerRef = useRef<HTMLDivElement>(null);
+  const filtersDialogRef = useRef<HTMLDivElement>(null);
+  const consentDialogRef = useRef<HTMLDivElement>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
   const drawerTouchStart = useRef<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
@@ -310,41 +338,21 @@ export default function Home() {
     };
   }, [menuOpen]);
 
+  // Mobile drawer, filters sheet and consent dialog share one accessible modal
+  // implementation: focus moves in, Tab is trapped, Escape closes, focus returns.
+  useDialogA11y(mobileDrawerRef, menuOpen, () => setMenuOpen(false));
+  useDialogA11y(filtersDialogRef, filtersOpen, () => setFiltersOpen(false));
+  useDialogA11y(consentDialogRef, landingConsent !== null, () => setLandingConsent(null));
+
   useEffect(() => {
-    if (!menuOpen) return;
-    const previousFocus = document.activeElement as HTMLElement | null;
-    const drawer = mobileDrawerRef.current;
-    const getFocusable = () => drawer ? Array.from(drawer.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')) : [];
-    const focusFirst = window.setTimeout(() => getFocusable()[0]?.focus(), 0);
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        setMenuOpen(false);
-        return;
-      }
-      if (event.key !== "Tab") return;
-      const focusable = getFocusable();
-      if (!focusable.length) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-    document.addEventListener("keydown", onKeyDown);
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      window.clearTimeout(focusFirst);
-      document.removeEventListener("keydown", onKeyDown);
-      document.body.style.overflow = previousOverflow;
-      previousFocus?.focus();
-    };
-  }, [menuOpen]);
+    document.documentElement.dataset.zsTheme = darkMode ? "dark" : "light";
+  }, [darkMode]);
+
+  useEffect(() => {
+    if (reduceMotion) document.documentElement.dataset.zsMotion = "reduce";
+    else delete document.documentElement.dataset.zsMotion;
+    try { localStorage.setItem("zipshift.reduceMotion", String(reduceMotion)); } catch { /* localStorage may be unavailable */ }
+  }, [reduceMotion]);
 
   useEffect(() => {
     const requestedScreen = new URLSearchParams(window.location.search).get("screen") as Screen | null;
@@ -426,17 +434,8 @@ export default function Home() {
     return () => document.body.classList.remove("zipshift-client-shell");
   }, [screen]);
 
-  useEffect(() => {
-    if (screen === "splash") return;
-    const root = document.getElementById("root");
-    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (!root || reducedMotion) return;
-    root.classList.remove("zipshift-route-enter");
-    void root.offsetWidth;
-    root.classList.add("zipshift-route-enter");
-    const cleanup = window.setTimeout(() => root.classList.remove("zipshift-route-enter"), 360);
-    return () => window.clearTimeout(cleanup);
-  }, [screen]);
+  // Move focus to the new screen's heading and announce it (single-page screen router).
+  useScreenChangeFocus(screen, SCREEN_TITLES[screen], { skip: screen === "splash" });
 
   const translations = {
     en: {
@@ -486,6 +485,7 @@ export default function Home() {
       largeText: "Large Text",
       colorblind: "Colorblind Mode",
       darkMode: "Dark Mode",
+      reduceMotion: "Reduce motion",
       filters: "Filters",
       reset: "Reset",
       categories: "Categories",
@@ -555,6 +555,7 @@ export default function Home() {
       largeText: "Texto Grande",
       colorblind: "Modo Daltónico",
       darkMode: "Modo Oscuro",
+      reduceMotion: "Reducir movimiento",
       filters: "Filtros",
       reset: "Restablecer",
       categories: "Categorías",
@@ -714,7 +715,7 @@ export default function Home() {
 
   // ─── BOTTOM NAV ───────────────────────────────────────────────────────────
   const BottomNav = () => (
-    <div className="zipshift-bottom-nav" style={{
+    <nav className="zipshift-bottom-nav" aria-label={language === "es" ? "Navegación principal" : "Primary"} style={{
       position: "fixed", bottom: 0, left: 0, right: 0,
       background: bg, borderTop: `1px solid ${borderColor}`,
       display: "flex", height: 64, zIndex: 100,
@@ -731,11 +732,13 @@ export default function Home() {
         return (
           <button
             key={item.id}
+            type="button"
+            aria-current={active ? "page" : undefined}
             onClick={() => navigate(item.id as Screen)}
             style={{
               flex: 1, display: "flex", flexDirection: "column", alignItems: "center",
               justifyContent: "center", gap: 2, background: "none", border: "none",
-              cursor: "pointer", color: active ? "#159d92" : subFg, fontSize: 10,
+              cursor: "pointer", color: active ? "var(--zs-color-brand)" : subFg, fontSize: 11,
               fontWeight: active ? 600 : 400,
             }}
           >
@@ -744,15 +747,15 @@ export default function Home() {
           </button>
         );
       })}
-    </div>
+    </nav>
   );
 
   // ─── HAMBURGER MENU ───────────────────────────────────────────────────────
   const ClientDesktopSidebar = () => (
-    <aside className={`zipshift-desktop-sidebar ${sidebarCollapsed ? "is-collapsed" : ""}`}>
-      <div className="zipshift-sidebar-top"><div className="zipshift-sidebar-brand"><img onError={(event) => { event.currentTarget.style.display = "none"; }} src={ZIPSHIFT_LOGO} alt="ZipShift" /><span aria-hidden="true"><ShieldCheck size={22} /></span></div><button type="button" className="zipshift-sidebar-toggle" onClick={() => setSidebarCollapsed((value) => !value)} aria-label={sidebarCollapsed ? "Expand Navigator menu" : "Collapse Navigator menu"} title={sidebarCollapsed ? "Expand menu" : "Collapse menu"}>{sidebarCollapsed ? "→" : "←"}</button></div>
+    <aside className={`zipshift-desktop-sidebar ${sidebarCollapsed ? "is-collapsed" : ""}`} aria-label="Navigator sidebar">
+      <div className="zipshift-sidebar-top"><div className="zipshift-sidebar-brand"><img onError={(event) => { event.currentTarget.style.display = "none"; }} src={ZIPSHIFT_LOGO} alt="ZipShift" /><span aria-hidden="true"><ShieldCheck size={22} /></span></div><button type="button" className="zipshift-sidebar-toggle" onClick={() => setSidebarCollapsed((value) => !value)} aria-expanded={!sidebarCollapsed} aria-label={sidebarCollapsed ? "Expand Navigator menu" : "Collapse Navigator menu"} title={sidebarCollapsed ? "Expand menu" : "Collapse menu"}><span aria-hidden="true">{sidebarCollapsed ? "→" : "←"}</span></button></div>
       <div className="zipshift-sidebar-caption">NAVIGATOR</div>
-      <nav>
+      <nav aria-label="Navigator">
         {[
           { icon: Search, label: "Map Search", dest: "map" as Screen },
           { icon: Heart, label: "Favorites", dest: "favorites" as Screen },
@@ -765,11 +768,12 @@ export default function Home() {
           { icon: UserCircle, label: "Profile", dest: "client-profile" as Screen },
         ].map((item) => {
           const Icon = item.icon;
-          return <button key={item.dest} onClick={() => navigate(item.dest)} className={activeNavTab === item.dest || screen === item.dest ? "active" : ""} aria-label={item.label} title={sidebarCollapsed ? item.label : undefined} data-tooltip={item.label}><Icon size={18} strokeWidth={1.8} aria-hidden="true" /><span>{item.label}</span>{item.dest === "notifications" && notificationCount > 0 && <b className="zipshift-notification-badge" aria-label={`${notificationCount} unread notifications`}>{notificationCount > 9 ? "9+" : notificationCount}</b>}</button>;
+          const current = activeNavTab === item.dest || screen === item.dest;
+          return <button key={item.dest} type="button" onClick={() => navigate(item.dest)} className={current ? "active" : ""} aria-current={current ? "page" : undefined} aria-label={item.dest === "notifications" && notificationCount > 0 ? `${item.label}, ${notificationCount} unread` : item.label} title={sidebarCollapsed ? item.label : undefined} data-tooltip={item.label}><Icon size={18} strokeWidth={1.8} aria-hidden="true" /><span>{item.label}</span>{item.dest === "notifications" && notificationCount > 0 && <b className="zipshift-notification-badge" aria-hidden="true">{notificationCount > 9 ? "9+" : notificationCount}</b>}</button>;
         })}
       </nav>
       <div className="zipshift-sidebar-profile">
-        <div className="zipshift-sidebar-avatar">{(clientUser || sessionUser)?.displayName?.slice(0, 1).toUpperCase() || "Z"}</div>
+        <div className="zipshift-sidebar-avatar" aria-hidden="true">{(clientUser || sessionUser)?.displayName?.slice(0, 1).toUpperCase() || "Z"}</div>
         <div><strong>{(clientUser || sessionUser)?.displayName || "ZipShift Client"}</strong><small>{sessionUser?.role === "admin" ? "Super administrator" : clientUser ? "Verified client" : "Create a profile"}</small></div>
         <button onClick={startProfileSignIn}>{clientUser ? "Profile" : sessionUser?.role === "admin" ? "Admin profile" : "Sign in"}</button>
       </div>
@@ -779,11 +783,12 @@ export default function Home() {
 
   const HamburgerMenu = () => (
     <>
-      <ClientDesktopSidebar />
+      <RenderSlot render={ClientDesktopSidebar} />
       {menuOpen && (
         <>
           <div
             className="zipshift-mobile-drawer-backdrop"
+            aria-hidden="true"
             style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 200 }}
             onClick={() => setMenuOpen(false)}
           />
@@ -795,9 +800,9 @@ export default function Home() {
             <div style={{ padding: "20px 16px", borderBottom: `1px solid ${borderColor}` }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
                 <img onError={(event) => { event.currentTarget.style.display = "none"; }} src={ZIPSHIFT_LOGO} alt="ZipShift" style={{ height: 28 }} />
-                <button onClick={() => setMenuOpen(false)} style={{
-                  background: "none", border: "none", cursor: "pointer", fontSize: 24, color: fg, lineHeight: 1,
-                }}>×</button>
+                <button type="button" className="zs-icon-button" onClick={() => setMenuOpen(false)} aria-label={language === "es" ? "Cerrar menú" : "Close menu"} style={{
+                  fontSize: 24, color: fg, lineHeight: 1,
+                }}><span aria-hidden="true">×</span></button>
               </div>
               {sessionUser && <div style={{ marginBottom: 10, borderRadius: 10, background: "#e8f7f5", color: "#0f766e", padding: "8px 10px", fontSize: 12, fontWeight: 800 }}><ShieldCheck size={14} style={{ verticalAlign: "-2px", marginRight: 5 }} aria-hidden="true" />Signed in: {sessionUser.displayName} · {sessionUser.role}</div>}
               <div style={{
@@ -811,13 +816,13 @@ export default function Home() {
                 <div>
                   <div style={{ fontWeight: 600, fontSize: 14, color: fg }}>{clientUser?.displayName || t.helloThere}</div>
                   <button onClick={startProfileSignIn} style={{
-                    background: "none", border: "none", color: "#159d92", fontSize: 13, cursor: "pointer", padding: 0,
+                    background: "none", border: "none", color: "var(--zs-color-brand)", fontSize: 13, cursor: "pointer", padding: 0,
                   }}>{clientUser ? "View profile" : `${t.signIn} →`}</button>
                 </div>
               </div>
               {sessionUser?.role === "admin" && <div style={{ display: "flex", gap: 8, marginTop: 10 }}><button onClick={() => { setMenuOpen(false); navigate("role-portal"); }} style={{ flex: 1, border: `1px solid ${borderColor}`, borderRadius: 8, background: bg, color: fg, padding: "8px 6px", fontSize: 12, fontWeight: 700 }}>Workspaces</button><button onClick={() => { setMenuOpen(false); navigate("home"); }} style={{ flex: 1, border: `1px solid ${borderColor}`, borderRadius: 8, background: bg, color: fg, padding: "8px 6px", fontSize: 12, fontWeight: 700 }}>Client view</button></div>}
             </div>
-            <div style={{ padding: "8px 0" }}>
+            <nav aria-label={language === "es" ? "Menú" : "Menu"} style={{ padding: "8px 0" }}>
               {[
                 { icon: Bell, label: t.notifications, dest: "notifications" as Screen },
                 { icon: ShieldCheck, label: "Emergency resources", dest: "emergency-directory" as Screen },
@@ -831,27 +836,27 @@ export default function Home() {
               ].map((item) => {
                 const Icon = item.icon;
                 return (
-                <button key={item.label} onClick={() => navigate(item.dest)} style={{
+                <button key={item.label} type="button" onClick={() => navigate(item.dest)} aria-current={screen === item.dest ? "page" : undefined} style={{
                   display: "flex", alignItems: "center", gap: 14, padding: "14px 16px",
                   background: "none", border: "none", borderBottom: `1px solid ${borderColor}`,
                   cursor: "pointer", color: fg, fontSize: 15, width: "100%", textAlign: "left",
                 }}>
                   <Icon size={20} strokeWidth={1.8} aria-hidden="true" style={{ width: 28 }} />
-                  <span style={{ flex: 1 }}>{item.label}</span>{item.dest === "notifications" && notificationCount > 0 && <b className="zipshift-notification-badge" aria-label={`${notificationCount} unread notifications`}>{notificationCount > 9 ? "9+" : notificationCount}</b>}
-                  <span style={{ color: subFg }}>›</span>
+                  <span style={{ flex: 1 }}>{item.label}</span>{item.dest === "notifications" && notificationCount > 0 && <b className="zipshift-notification-badge" aria-hidden="true">{notificationCount > 9 ? "9+" : notificationCount}</b>}
+                  <span style={{ color: subFg }} aria-hidden="true">›</span>
                 </button>
                 );
               })}
-            </div>
+            </nav>
             <div style={{ padding: "16px" }}>
               <div style={{ color: subFg, fontSize: 12, fontWeight: 600, marginBottom: 10 }}>{t.language}</div>
               <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
                 {(["en", "es"] as const).map((lang) => (
-                  <button key={lang} onClick={() => setLanguage(lang)} style={{
+                  <button key={lang} type="button" lang={lang} aria-pressed={language === lang} onClick={() => { setLanguage(lang); announce(lang === "es" ? "Idioma: Español" : "Language: English"); }} style={{
                     flex: 1, padding: "8px 0", borderRadius: 8,
-                    border: `2px solid ${language === lang ? "#159d92" : borderColor}`,
+                    border: `2px solid ${language === lang ? "var(--zs-color-brand)" : borderColor}`,
                     background: language === lang ? "#eff6ff" : bg,
-                    color: language === lang ? "#159d92" : fg,
+                    color: language === lang ? "var(--zs-color-brand)" : fg,
                     fontWeight: language === lang ? 700 : 400, cursor: "pointer", fontSize: 14,
                   }}>{lang === "en" ? "English" : "Español"}</button>
                 ))}
@@ -860,20 +865,11 @@ export default function Home() {
               {[
                 { label: t.largeText, value: largeText, toggle: () => setLargeText(!largeText) },
                 { label: t.darkMode, value: darkMode, toggle: () => setDarkMode(!darkMode) },
+                { label: t.reduceMotion, value: reduceMotion, toggle: () => setReduceMotion(!reduceMotion) },
               ].map((opt) => (
                 <div key={opt.label} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
                   <span style={{ color: fg, fontSize: 14 }}>{opt.label}</span>
-                  <button onClick={opt.toggle} style={{
-                    width: 44, height: 24, borderRadius: 12,
-                    background: opt.value ? "#159d92" : "#d1d5db",
-                    border: "none", cursor: "pointer", position: "relative",
-                  }}>
-                    <div style={{
-                      position: "absolute", top: 2, left: opt.value ? 22 : 2,
-                      width: 20, height: 20, borderRadius: "50%", background: "#fff",
-                      transition: "left 0.2s",
-                    }} />
-                  </button>
+                  <button type="button" role="switch" aria-checked={opt.value} aria-label={opt.label} onClick={opt.toggle} className="zs-switch" />
                 </div>
               ))}
             </div>
@@ -902,35 +898,33 @@ export default function Home() {
   const Header = ({ title, showBack = false, showBookmark = false, onBookmark }: {
     title?: React.ReactNode; showBack?: boolean; showBookmark?: boolean; onBookmark?: () => void;
   }) => (
-    <div className="zipshift-client-header" style={{
+    <header className="zipshift-client-header" style={{
       position: "sticky", top: 0, zIndex: 50,
       background: bg, borderBottom: `1px solid ${borderColor}`,
       display: "flex", alignItems: "center", padding: "12px 16px", gap: 12, minHeight: 56,
     }}>
       {showBack && (
-        <button onClick={goBack} style={{
-          background: "none", border: "none", cursor: "pointer",
-          color: "#159d92", fontSize: 22, padding: 0, lineHeight: 1,
-        }}>‹</button>
+        <button type="button" className="zs-icon-button" onClick={goBack} aria-label={language === "es" ? "Volver" : "Go back"} style={{
+          color: "var(--zs-color-brand)", fontSize: 26, lineHeight: 1,
+        }}><span aria-hidden="true">‹</span></button>
       )}
-      <div style={{ flex: 1 }}>
+      <h1 style={{ flex: 1, margin: 0, minWidth: 0, fontSize: "inherit", fontWeight: "inherit", lineHeight: 1.2 }}>
         {title || <img onError={(event) => { event.currentTarget.style.display = "none"; }} src={ZIPSHIFT_LOGO} alt="ZipShift" style={{ height: 32 }} />}
-      </div>
-      <SessionSwitcher compact />
+      </h1>
+      <RenderSlot render={SessionSwitcher} compact />
       {showBookmark && (
-        <button onClick={onBookmark} style={{
-          background: "none", border: "none", cursor: "pointer", fontSize: 20, color: subFg,
-        }}><Heart size={18} strokeWidth={1.8} fill={selectedProvider && savedProviders.includes(selectedProvider.record_id) ? "currentColor" : "none"} aria-hidden="true" /></button>
+        <button type="button" className="zs-icon-button" onClick={onBookmark} aria-pressed={Boolean(selectedProvider && savedProviders.includes(selectedProvider.record_id))} aria-label={language === "es" ? "Guardar recurso" : "Save resource"} style={{
+          fontSize: 20, color: selectedProvider && savedProviders.includes(selectedProvider.record_id) ? "#dc2626" : subFg,
+        }}><Heart className="zs-heart" size={18} strokeWidth={1.8} fill={selectedProvider && savedProviders.includes(selectedProvider.record_id) ? "currentColor" : "none"} aria-hidden="true" /></button>
       )}
-      <button onClick={() => setMenuOpen(true)} style={{
-        background: "none", border: "none", cursor: "pointer", padding: 4,
-        display: "flex", flexDirection: "column", gap: 4, alignItems: "center",
+      <button type="button" ref={menuButtonRef} className="zs-icon-button" onClick={() => setMenuOpen(true)} aria-label={language === "es" ? "Abrir menú" : "Open menu"} aria-haspopup="dialog" aria-expanded={menuOpen} style={{
+        display: "flex", flexDirection: "column", gap: 4, alignItems: "center", justifyContent: "center",
       }}>
-        <div style={{ width: 20, height: 2, background: fg, borderRadius: 1 }} />
-        <div style={{ width: 20, height: 2, background: fg, borderRadius: 1 }} />
-        <div style={{ width: 20, height: 2, background: fg, borderRadius: 1 }} />
+        <span aria-hidden="true" style={{ width: 20, height: 2, background: fg, borderRadius: 1 }} />
+        <span aria-hidden="true" style={{ width: 20, height: 2, background: fg, borderRadius: 1 }} />
+        <span aria-hidden="true" style={{ width: 20, height: 2, background: fg, borderRadius: 1 }} />
       </button>
-    </div>
+    </header>
   );
 
   // ─── FILTERS DRAWER ───────────────────────────────────────────────────────
@@ -938,50 +932,52 @@ export default function Home() {
     <>
       {filtersOpen && (
         <>
-          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 300 }} onClick={() => setFiltersOpen(false)} />
-          <div style={{
+          <div className="zs-backdrop" aria-hidden="true" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 300 }} onClick={() => setFiltersOpen(false)} />
+          <div ref={filtersDialogRef} className="zs-sheet" role="dialog" aria-modal="true" aria-labelledby="zs-filters-title" style={{
             position: "fixed", bottom: 0, left: 0, right: 0, background: bg,
             borderRadius: "16px 16px 0 0", padding: "20px 16px 100px", zIndex: 301,
             maxHeight: "85vh", overflowY: "auto",
           }}>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16 }}>
-              <span style={{ fontWeight: 700, fontSize: 18, color: fg }}>{t.filters}</span>
-              <button onClick={() => { setSelectedCategories([]); setMaxDistance(25); setOpenNow(false); }}
-                style={{ background: "none", border: "none", color: "#159d92", fontWeight: 600, cursor: "pointer", fontSize: 14 }}>{t.reset}</button>
+              <h2 id="zs-filters-title" style={{ margin: 0, fontWeight: 700, fontSize: 18, color: fg }}>{t.filters}</h2>
+              <button type="button" onClick={() => { setSelectedCategories([]); setMaxDistance(25); setOpenNow(false); announce(language === "es" ? "Filtros restablecidos" : "Filters reset"); }}
+                style={{ background: "none", border: "none", color: "var(--zs-color-brand)", fontWeight: 600, cursor: "pointer", fontSize: 14 }}>{t.reset}</button>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
-              <span style={{ fontWeight: 600, fontSize: 14, color: fg }}>{t.categories}</span>
+              <span id="zs-filter-categories" style={{ fontWeight: 600, fontSize: 14, color: fg }}>{t.categories}</span>
               <button onClick={() => setSelectedCategories(CATEGORIES.map((c) => c.id))}
-                style={{ background: "none", border: "none", color: "#159d92", fontSize: 13, cursor: "pointer" }}>{t.selectAll}</button>
+                style={{ background: "none", border: "none", color: "var(--zs-color-brand)", fontSize: 13, cursor: "pointer" }}>{t.selectAll}</button>
             </div>
+            <div role="group" aria-labelledby="zs-filter-categories">
             {CATEGORIES.map((cat) => (
               <label key={cat.id} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, cursor: "pointer" }}>
                 <input type="checkbox" checked={selectedCategories.includes(cat.id)}
                   onChange={() => setSelectedCategories((prev) =>
                     prev.includes(cat.id) ? prev.filter((x) => x !== cat.id) : [...prev, cat.id]
                   )}
-                  style={{ width: 18, height: 18, accentColor: "#159d92" }} />
+                  style={{ width: 18, height: 18, accentColor: "var(--zs-color-brand)" }} />
                 <span style={{ color: fg, fontSize: 14 }}>{cat.label.replace("\n", " ")}</span>
               </label>
             ))}
+            </div>
             <div style={{ marginTop: 16, marginBottom: 10 }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-                <span style={{ fontWeight: 600, fontSize: 14, color: fg }}>{t.distance}</span>
+                <label htmlFor="zs-filter-distance" style={{ fontWeight: 600, fontSize: 14, color: fg }}>{t.distance}</label>
                 <span style={{ color: subFg, fontSize: 13 }}>{maxDistance >= 25 ? t.anyDistance : `${maxDistance} mi`}</span>
               </div>
-              <input type="range" min={1} max={25} value={maxDistance} onChange={(e) => setMaxDistance(+e.target.value)}
-                style={{ width: "100%", accentColor: "#159d92" }} />
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: subFg, marginTop: 4 }}>
+              <input id="zs-filter-distance" type="range" min={1} max={25} value={maxDistance} aria-valuetext={maxDistance >= 25 ? t.anyDistance : `${maxDistance} miles`} onChange={(e) => setMaxDistance(+e.target.value)}
+                style={{ width: "100%", accentColor: "var(--zs-color-brand)" }} />
+              <div aria-hidden="true" style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: subFg, marginTop: 4 }}>
                 <span>1 mi</span><span>5 mi</span><span>10 mi</span><span>25 mi+</span>
               </div>
             </div>
             <label style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20, cursor: "pointer" }}>
               <input type="checkbox" checked={openNow} onChange={() => setOpenNow(!openNow)}
-                style={{ width: 18, height: 18, accentColor: "#159d92" }} />
+                style={{ width: 18, height: 18, accentColor: "var(--zs-color-brand)" }} />
               <span style={{ color: fg, fontSize: 14 }}>{t.openNow}</span>
             </label>
-            <button onClick={() => setFiltersOpen(false)} style={{
-              width: "100%", padding: "14px 0", background: "#159d92", color: "#fff",
+            <button type="button" className="zs-press" onClick={() => { setFiltersOpen(false); announce(`${filteredProviders.length} ${t.results}`); }} style={{
+              width: "100%", padding: "14px 0", background: "var(--zs-color-brand)", color: "#fff",
               border: "none", borderRadius: 10, fontWeight: 700, fontSize: 16, cursor: "pointer",
             }}>{t.applyFilters}</button>
           </div>
@@ -992,32 +988,14 @@ export default function Home() {
 
   // ─── SPLASH ───────────────────────────────────────────────────────────────
   if (screen === "splash") {
-    return (
-      <div style={{
-        position: "fixed", inset: 0, background: "#159d92",
-        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-      }}>
-        <div aria-label="ZipShift" style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 24, color: "#fff", fontSize: 28, fontWeight: 900, letterSpacing: -1 }}><ShieldCheck size={34} strokeWidth={1.7} aria-hidden="true" />ZipShift</div>
-        <p style={{ color: "rgba(255,255,255,0.8)", fontSize: 16, letterSpacing: 1 }}>Navigate. Connect. Act.</p>
-        <div style={{
-          marginTop: 48, width: 120, height: 4, background: "rgba(255,255,255,0.2)",
-          borderRadius: 2, overflow: "hidden",
-        }}>
-          <div style={{
-            height: "100%", background: "#fff", borderRadius: 2,
-            animation: "loadbar 2s linear forwards",
-          }} />
-        </div>
-        <style>{`@keyframes loadbar { from { width: 0% } to { width: 100% } }`}</style>
-      </div>
-    );
+    return <BrandedSplash tagline="Navigate. Connect. Act." status={language === "es" ? "Cargando ZipShift Navigator" : "Loading ZipShift Navigator"} />;
   }
 
   if (screen === "home" && navigatorLoading) {
-    return <div className="zipshift-navigator-loading" role="status" aria-live="polite" aria-label="Loading ZipShift resources">
-      <div className="zipshift-loading-orbit"><span /><span /><span /></div>
+    return <div className="zipshift-navigator-loading" role="status" aria-live="polite" aria-busy="true">
+      <div className="zipshift-loading-orbit" aria-hidden="true"><span /><span /><span /></div>
       <div className="zipshift-loading-copy"><strong>Loading ZipShift Navigator</strong><span>Fetching verified resources and current availability…</span></div>
-      <div className="zipshift-loading-skeleton-grid"><span /><span /><span /><span /></div>
+      <div className="zipshift-loading-skeleton-grid" aria-hidden="true"><span /><span /><span /><span /></div>
     </div>;
   }
 
@@ -1025,14 +1003,15 @@ export default function Home() {
   if (screen === "home") {
     return (
       <div style={{ background: bg, minHeight: "100vh", fontSize, color: fg, paddingBottom: 80 }}>
-        <HamburgerMenu />
-        <Header />
+        <RenderSlot render={HamburgerMenu} />
+        <RenderSlot render={Header} />
+        <main id="main-content" key={screen} tabIndex={-1} className="zs-screen">
         <div style={{ padding: "16px" }}>
           {/* Greeting */}
           <div style={{ marginBottom: 16 }}>
             <div style={{ fontSize: 18, fontWeight: 700, color: fg }}>{t.goodMorning}</div>
             <div style={{ fontSize: 14, color: subFg }}>{t.howCanWeHelp}</div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}><button onClick={() => setScreen("guided-entry")} style={{ display: "inline-flex", alignItems: "center", gap: 8, border: 0, borderRadius: 10, background: "#159d92", color: "#fff", padding: "11px 14px", fontWeight: 900, fontSize: 12, cursor: "pointer" }}><Sparkles size={15} />{language === "es" ? "Empezar aquí" : "Start here"}</button><button onClick={() => setQuickGuideOpen(true)} style={{ display: "inline-flex", alignItems: "center", gap: 8, border: "1px solid #b8d9d8", borderRadius: 10, background: cardBg, color: "#0f766e", padding: "10px 13px", fontWeight: 800, fontSize: 12, cursor: "pointer" }}><FileText size={15} />{language === "es" ? "Guía rápida de recursos" : "Quick resource guide"}</button><button onClick={() => setLandingConsent("privacy")} style={{ display: "inline-flex", alignItems: "center", gap: 8, border: "1px solid #b8d9d8", borderRadius: 10, background: cardBg, color: "#0f766e", padding: "10px 13px", fontWeight: 800, fontSize: 12, cursor: "pointer" }}><ShieldCheck size={15} />{language === "es" ? "Privacidad y consentimiento" : "Privacy & consent"}</button><button onClick={() => setLandingConsent("research")} style={{ display: "inline-flex", alignItems: "center", gap: 8, border: "1px solid #b8d9d8", borderRadius: 10, background: cardBg, color: "#0f766e", padding: "10px 13px", fontWeight: 800, fontSize: 12, cursor: "pointer" }}><ClipboardList size={15} />{language === "es" ? "Consentimiento de investigación" : "Research consent"}</button></div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}><button onClick={() => setScreen("guided-entry")} style={{ display: "inline-flex", alignItems: "center", gap: 8, border: 0, borderRadius: 10, background: "var(--zs-color-brand)", color: "#fff", padding: "11px 14px", fontWeight: 900, fontSize: 12, cursor: "pointer" }}><Sparkles size={15} aria-hidden="true" />{language === "es" ? "Empezar aquí" : "Start here"}</button><button onClick={() => setQuickGuideOpen(true)} style={{ display: "inline-flex", alignItems: "center", gap: 8, border: "1px solid #b8d9d8", borderRadius: 10, background: cardBg, color: "#0f766e", padding: "10px 13px", fontWeight: 800, fontSize: 12, cursor: "pointer" }}><FileText size={15} aria-hidden="true" />{language === "es" ? "Guía rápida de recursos" : "Quick resource guide"}</button><button onClick={() => setLandingConsent("privacy")} style={{ display: "inline-flex", alignItems: "center", gap: 8, border: "1px solid #b8d9d8", borderRadius: 10, background: cardBg, color: "#0f766e", padding: "10px 13px", fontWeight: 800, fontSize: 12, cursor: "pointer" }}><ShieldCheck size={15} aria-hidden="true" />{language === "es" ? "Privacidad y consentimiento" : "Privacy & consent"}</button><button onClick={() => setLandingConsent("research")} style={{ display: "inline-flex", alignItems: "center", gap: 8, border: "1px solid #b8d9d8", borderRadius: 10, background: cardBg, color: "#0f766e", padding: "10px 13px", fontWeight: 800, fontSize: 12, cursor: "pointer" }}><ClipboardList size={15} aria-hidden="true" />{language === "es" ? "Consentimiento de investigación" : "Research consent"}</button></div>
           </div>
           <section aria-labelledby="zipshift-promo-title" style={{ marginBottom: 20, overflow: "hidden", borderRadius: 16, background: "#142846", boxShadow: "0 14px 30px rgba(20,40,70,0.16)" }}>
             <video src={PROMO_VIDEO} controls muted playsInline preload="metadata" style={{ display: "block", width: "100%", aspectRatio: "16 / 9", objectFit: "cover" }} aria-label="ZipShift Navigator 30-second overview video" />
@@ -1052,6 +1031,8 @@ export default function Home() {
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") startZipSearch(); }}
               placeholder={t.searchPlaceholder}
+              aria-label={t.searchPlaceholder}
+              type="search"
               style={{ flex: 1, minWidth: 180, border: "none", background: "transparent", fontSize: 14, color: fg, outline: "none" }}
             />
             <select aria-label="Filter resources by covered ZIP code" value={selectedZip} onChange={(e) => setSelectedZip(e.target.value)} style={{
@@ -1060,15 +1041,15 @@ export default function Home() {
               <option value="all">All covered ZIPs</option>
               {COVERED_ZIPS.map((zip) => <option key={zip.code} value={zip.code}>{zip.label}</option>)}
             </select>
-            <button onClick={startZipSearch} style={{
-              background: "none", border: "none", cursor: "pointer", color: subFg, fontSize: 16,
+            <button type="button" className="zs-icon-button" onClick={startZipSearch} aria-label={language === "es" ? "Buscar" : "Search"} style={{
+              color: subFg, fontSize: 16,
             }}><Search size={17} strokeWidth={1.8} aria-hidden="true" /></button>
           </div>
           <p style={{ margin: "-12px 0 18px", fontSize: 11, color: subFg }}>ZIP selections are counted in daily totals only. ZipShift does not retain your IP address, account, or search terms with this planning data.</p>
           {/* Browse by Category */}
-          <div style={{ fontWeight: 700, fontSize: 12, color: subFg, letterSpacing: 0.5, marginBottom: 12 }}>
+          <h2 style={{ margin: "0 0 12px", fontWeight: 700, fontSize: 12, color: subFg, letterSpacing: 0.5 }}>
             {t.browseByCategory}
-          </div>
+          </h2>
           <div className="zipshift-category-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 24 }}>
             {CATEGORIES.map((cat) => (
               <button key={cat.id} onClick={() => { setSelectedCategories([cat.id]); navigate("search-results"); }}
@@ -1091,9 +1072,9 @@ export default function Home() {
           </div>
           {/* Near You */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-            <div style={{ fontWeight: 700, fontSize: 12, color: subFg, letterSpacing: 0.5 }}>{t.nearYou}</div>
+            <h2 style={{ margin: 0, fontWeight: 700, fontSize: 12, color: subFg, letterSpacing: 0.5 }}>{t.nearYou}</h2>
             <button onClick={() => navigate("search-results")} style={{
-              background: "none", border: "none", color: "#159d92", fontSize: 13, cursor: "pointer", fontWeight: 600,
+              background: "none", border: "none", color: "var(--zs-color-brand)", fontSize: 13, cursor: "pointer", fontWeight: 600,
             }}>{t.viewAll}</button>
           </div>
           <div className="zipshift-nearby-list">
@@ -1123,14 +1104,15 @@ export default function Home() {
                     {" · "}<span style={{ color: subFg }}>{status.label.replace("Open · ", "")}</span>
                   </div>
                 </div>
-                <span style={{ color: subFg, fontSize: 18 }}>›</span>
+                <span style={{ color: subFg, fontSize: 18 }} aria-hidden="true">›</span>
               </button>
             );
                     })}
           </div>
         </div>
-        <BottomNav />
-        {quickGuideOpen && <ClientQuickGuideModal providers={guideProviders} language={language} onClose={() => setQuickGuideOpen(false)} onOpenDirectory={() => { setQuickGuideOpen(false); navigate("county-directory"); }} />}{landingConsent && <div className="fixed inset-0 z-[450] flex items-end justify-center bg-slate-950/60 p-0 backdrop-blur-sm sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-labelledby="landing-consent-title"><section className="w-full max-w-xl rounded-t-3xl bg-white p-6 text-[#142846] shadow-2xl sm:rounded-3xl"><div className="flex items-start justify-between gap-4"><div><p className="text-xs font-black uppercase tracking-[.16em] text-[#159d92]">{landingConsent === "privacy" ? (language === "es" ? "Privacidad primero" : "Privacy first") : (language === "es" ? "Participación informada" : "Informed participation")}</p><h2 id="landing-consent-title" className="mt-1 text-2xl font-black">{landingConsent === "privacy" ? (language === "es" ? "Revisa la privacidad antes de continuar" : "Review privacy before continuing") : (language === "es" ? "Elige tu portal de consentimiento" : "Choose your consent portal")}</h2></div><button type="button" onClick={() => setLandingConsent(null)} className="rounded-lg border border-slate-200 p-2 text-slate-500" aria-label="Close consent popup"><X size={18} /></button></div>{landingConsent === "privacy" ? <><p className="mt-4 text-sm leading-6 text-slate-600">{language === "es" ? "ZipShift usa la información mínima necesaria para conectar a las personas con recursos. El consentimiento de servicios y el consentimiento de investigación son decisiones separadas." : "ZipShift uses the minimum information needed to connect people with resources. Service consent and research consent are separate decisions."}</p><div className="mt-5 flex flex-wrap gap-2"><button type="button" onClick={() => { setLandingConsent(null); navigate("privacy"); }} className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700">{language === "es" ? "Leer política" : "Read privacy policy"}</button><button type="button" onClick={() => routeConsentAudience(sessionUser?.role === "admin" ? "admin" : sessionUser?.role === "researcher" ? "researcher" : sessionUser?.role === "client" ? "client" : "client")} className="rounded-lg bg-[#159d92] px-4 py-2.5 text-sm font-bold text-white">{language === "es" ? "Continuar al portal" : "Continue to portal"}</button></div></> : <><p className="mt-4 text-sm leading-6 text-slate-600">{language === "es" ? "Clientes revisan las opciones en su perfil. El personal, investigadores y administradores deben entrar a su espacio protegido." : "Clients review options in their profile. Staff, researchers, and administrators enter their protected workspace."}</p><div className="mt-5 grid gap-2 sm:grid-cols-2"><button type="button" onClick={() => routeConsentAudience("client")} className="rounded-lg border border-teal-200 bg-teal-50 px-4 py-3 text-left text-sm font-bold text-[#0f766e]">Client / participant<span className="mt-1 block text-xs font-normal text-slate-500">Review client consent</span></button><button type="button" onClick={() => routeConsentAudience("staff")} className="rounded-lg border border-slate-200 px-4 py-3 text-left text-sm font-bold text-[#142846]">Care team / staff<span className="mt-1 block text-xs font-normal text-slate-500">Open staff sign-in and portal</span></button><button type="button" onClick={() => routeConsentAudience("researcher")} className="rounded-lg border border-slate-200 px-4 py-3 text-left text-sm font-bold text-[#142846]">Researcher<span className="mt-1 block text-xs font-normal text-slate-500">Open researcher sign-in</span></button><button type="button" onClick={() => routeConsentAudience("admin")} className="rounded-lg border border-slate-200 px-4 py-3 text-left text-sm font-bold text-[#142846]">Administrator<span className="mt-1 block text-xs font-normal text-slate-500">Open protected admin access</span></button></div></>}</section></div>}
+        </main>
+        <RenderSlot render={BottomNav} />
+        {quickGuideOpen && <ClientQuickGuideModal providers={guideProviders} language={language} onClose={() => setQuickGuideOpen(false)} onOpenDirectory={() => { setQuickGuideOpen(false); navigate("county-directory"); }} />}{landingConsent && <div className="fixed inset-0 z-[450] flex items-end justify-center bg-slate-950/60 p-0 backdrop-blur-sm sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-labelledby="landing-consent-title" ref={consentDialogRef}><section className="zs-dialog-panel w-full max-w-xl rounded-t-3xl bg-white p-6 text-[#142846] shadow-2xl sm:rounded-3xl"><div className="flex items-start justify-between gap-4"><div><p className="text-xs font-black uppercase tracking-[.16em] text-brand">{landingConsent === "privacy" ? (language === "es" ? "Privacidad primero" : "Privacy first") : (language === "es" ? "Participación informada" : "Informed participation")}</p><h2 id="landing-consent-title" className="mt-1 text-2xl font-black">{landingConsent === "privacy" ? (language === "es" ? "Revisa la privacidad antes de continuar" : "Review privacy before continuing") : (language === "es" ? "Elige tu portal de consentimiento" : "Choose your consent portal")}</h2></div><button type="button" onClick={() => setLandingConsent(null)} className="rounded-lg border border-slate-200 p-2 text-slate-500" aria-label="Close consent popup"><X size={18} aria-hidden="true" /></button></div>{landingConsent === "privacy" ? <><p className="mt-4 text-sm leading-6 text-slate-600">{language === "es" ? "ZipShift usa la información mínima necesaria para conectar a las personas con recursos. El consentimiento de servicios y el consentimiento de investigación son decisiones separadas." : "ZipShift uses the minimum information needed to connect people with resources. Service consent and research consent are separate decisions."}</p><div className="mt-5 flex flex-wrap gap-2"><button type="button" onClick={() => { setLandingConsent(null); navigate("privacy"); }} className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700">{language === "es" ? "Leer política" : "Read privacy policy"}</button><button type="button" onClick={() => routeConsentAudience(sessionUser?.role === "admin" ? "admin" : sessionUser?.role === "researcher" ? "researcher" : sessionUser?.role === "client" ? "client" : "client")} className="rounded-lg bg-brand px-4 py-2.5 text-sm font-bold text-white">{language === "es" ? "Continuar al portal" : "Continue to portal"}</button></div></> : <><p className="mt-4 text-sm leading-6 text-slate-600">{language === "es" ? "Clientes revisan las opciones en su perfil. El personal, investigadores y administradores deben entrar a su espacio protegido." : "Clients review options in their profile. Staff, researchers, and administrators enter their protected workspace."}</p><div className="mt-5 grid gap-2 sm:grid-cols-2"><button type="button" onClick={() => routeConsentAudience("client")} className="rounded-lg border border-teal-200 bg-teal-50 px-4 py-3 text-left text-sm font-bold text-[#0f766e]">Client / participant<span className="mt-1 block text-xs font-normal text-slate-500">Review client consent</span></button><button type="button" onClick={() => routeConsentAudience("staff")} className="rounded-lg border border-slate-200 px-4 py-3 text-left text-sm font-bold text-[#142846]">Care team / staff<span className="mt-1 block text-xs font-normal text-slate-500">Open staff sign-in and portal</span></button><button type="button" onClick={() => routeConsentAudience("researcher")} className="rounded-lg border border-slate-200 px-4 py-3 text-left text-sm font-bold text-[#142846]">Researcher<span className="mt-1 block text-xs font-normal text-slate-500">Open researcher sign-in</span></button><button type="button" onClick={() => routeConsentAudience("admin")} className="rounded-lg border border-slate-200 px-4 py-3 text-left text-sm font-bold text-[#142846]">Administrator<span className="mt-1 block text-xs font-normal text-slate-500">Open protected admin access</span></button></div></>}</section></div>}
       </div>
     );
   }
@@ -1138,9 +1120,10 @@ export default function Home() {
   if (screen === "search-results") {
     return (
       <div style={{ background: bg, minHeight: "100vh", fontSize, color: fg, paddingBottom: 80 }}>
-        <HamburgerMenu />
-        <FiltersDrawer />
-        <Header title={<span style={{ fontWeight: 700, fontSize: 16, color: fg }}>{t.searchResultsTitle}</span>} showBack />
+        <RenderSlot render={HamburgerMenu} />
+        <RenderSlot render={FiltersDrawer} />
+        <RenderSlot render={Header} title={<span style={{ fontWeight: 700, fontSize: 16, color: fg }}>{t.searchResultsTitle}</span>} showBack />
+        <main id="main-content" key={screen} tabIndex={-1} className="zs-screen">
         {/* Search + filter row */}
         <div style={{ padding: "10px 16px", borderBottom: `1px solid ${borderColor}`, display: "flex", gap: 8 }}>
           <div style={{
@@ -1150,19 +1133,21 @@ export default function Home() {
             <Search size={18} strokeWidth={1.8} color={subFg} aria-hidden="true" />
             <input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={t.searchPlaceholder}
+              aria-label={t.searchPlaceholder}
+              type="search"
               style={{ flex: 1, border: "none", background: "transparent", fontSize: 14, color: fg, outline: "none" }} />
           </div>
-          <button onClick={() => setFiltersOpen(true)} style={{
-            padding: "8px 14px", background: selectedCategories.length > 0 ? "#159d92" : cardBg,
-            border: `1px solid ${selectedCategories.length > 0 ? "#159d92" : borderColor}`,
+          <button type="button" onClick={() => setFiltersOpen(true)} aria-haspopup="dialog" aria-expanded={filtersOpen} style={{
+            padding: "8px 14px", background: selectedCategories.length > 0 ? "var(--zs-color-brand)" : cardBg,
+            border: `1px solid ${selectedCategories.length > 0 ? "var(--zs-color-brand)" : borderColor}`,
             borderRadius: 10, color: selectedCategories.length > 0 ? "#fff" : fg,
             fontSize: 13, fontWeight: 600, cursor: "pointer",
           }}><SlidersHorizontal size={15} aria-hidden="true" /> {t.filters}{selectedCategories.length > 0 ? ` (${selectedCategories.length})` : ""}</button>
         </div>
         {/* Results count */}
         <div style={{ padding: "10px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <span style={{ fontSize: 13, color: subFg }}>{filteredProviders.length} {t.results}</span>
-          <button style={{ background: "none", border: "none", color: "#159d92", fontSize: 13, cursor: "pointer", fontWeight: 600 }}>
+          <span role="status" aria-live="polite" style={{ fontSize: 13, color: subFg }}>{filteredProviders.length} {t.results}</span>
+          <button style={{ background: "none", border: "none", color: "var(--zs-color-brand)", fontSize: 13, cursor: "pointer", fontWeight: 600 }}>
             {t.sort} ›
           </button>
         </div>
@@ -1201,13 +1186,14 @@ export default function Home() {
                 </button>
                 <button onClick={() => toggleSave(p.record_id)} style={{
                   background: "none", border: "none", cursor: "pointer", fontSize: 22,
-                  color: isSaved ? "#dc2626" : subFg, flexShrink: 0,
-                }} aria-label={isSaved ? "Remove saved resource" : "Save resource"} aria-pressed={isSaved}><Heart size={20} fill={isSaved ? "currentColor" : "none"} strokeWidth={1.8} /></button>
+                  color: isSaved ? "#dc2626" : subFg, flexShrink: 0, minWidth: 44, minHeight: 44,
+                }} aria-label={`${isSaved ? "Remove" : "Save"} ${p.org_name}`} aria-pressed={isSaved}><Heart className="zs-heart" aria-hidden="true" size={20} fill={isSaved ? "currentColor" : "none"} strokeWidth={1.8} /></button>
               </div>
             );
           })}
         </div>
-        <BottomNav />
+        </main>
+        <RenderSlot render={BottomNav} />
       </div>
     );
   }
@@ -1216,26 +1202,27 @@ export default function Home() {
   if (screen === "map") {
     return (
       <div style={{ background: bg, height: "100vh", display: "flex", flexDirection: "column", fontSize, color: fg }}>
-        <HamburgerMenu />
-        <FiltersDrawer />
+        <RenderSlot render={HamburgerMenu} />
+        <RenderSlot render={FiltersDrawer} />
+        <main id="main-content" key={screen} tabIndex={-1} className="zs-screen" style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
         <div style={{
           display: "flex", alignItems: "center", justifyContent: "space-between",
           padding: "12px 16px", borderBottom: `1px solid ${borderColor}`, background: bg, zIndex: 10,
         }}>
-          <span style={{ fontWeight: 700, fontSize: 18, color: fg }}>Map</span>
-          <button onClick={() => setFiltersOpen(true)} style={{
+          <h1 style={{ margin: 0, fontWeight: 700, fontSize: 18, color: fg }}>{language === "es" ? "Mapa" : "Map"}</h1>
+          <button type="button" onClick={() => setFiltersOpen(true)} aria-haspopup="dialog" aria-expanded={filtersOpen} style={{
             display: "flex", alignItems: "center", gap: 6, padding: "6px 14px",
             background: cardBg, border: `1px solid ${borderColor}`, borderRadius: 20,
             fontSize: 13, color: fg, cursor: "pointer", fontWeight: 600,
           }}><SlidersHorizontal size={15} aria-hidden="true" /> {t.filters}</button>
         </div>
         {/* Map/List toggle */}
-        <div style={{ display: "flex", gap: 0, padding: "8px 16px", background: bg }}>
-          <button style={{
-            flex: 1, padding: "8px 0", background: "#159d92", color: "#fff",
+        <div role="group" aria-label={language === "es" ? "Vista" : "View"} style={{ display: "flex", gap: 0, padding: "8px 16px", background: bg }}>
+          <button type="button" aria-pressed="true" style={{
+            flex: 1, padding: "8px 0", background: "var(--zs-color-brand)", color: "#fff",
             border: "none", borderRadius: "8px 0 0 8px", fontWeight: 600, fontSize: 14, cursor: "pointer",
-          }}>Map</button>
-          <button onClick={() => navigate("search-results")} style={{
+          }}>{language === "es" ? "Mapa" : "Map"}</button>
+          <button type="button" aria-pressed="false" onClick={() => navigate("search-results")} style={{
             flex: 1, padding: "8px 0", background: cardBg, color: fg,
             border: `1px solid ${borderColor}`, borderRadius: "0 8px 8px 0",
             fontWeight: 600, fontSize: 14, cursor: "pointer",
@@ -1248,26 +1235,12 @@ export default function Home() {
             onProviderSelect={openProvider}
             darkMode={darkMode}
             selectedCity={selectedCity}
+            label={language === "es" ? "Mapa de recursos comunitarios" : "Community resource map"}
           />
         </div>
-        {/* Bottom info bar */}
-        <div style={{
-          background: bg, borderTop: `1px solid ${borderColor}`,
-          padding: "12px 16px", display: "flex", alignItems: "center", justifyContent: "space-between",
-          paddingBottom: 76,
-        }}>
-          <div>
-            <div style={{ fontWeight: 700, fontSize: 15, color: fg }}>
-              {filteredProviders.length} {t.resources}
-            </div>
-            <div style={{ fontSize: 12, color: subFg }}>{t.tapToExplore}</div>
-          </div>
-          <button onClick={() => navigate("search-results")} style={{
-            padding: "8px 16px", background: "#159d92", color: "#fff",
-            border: "none", borderRadius: 8, fontWeight: 600, fontSize: 13, cursor: "pointer",
-          }}>View List ›</button>
-        </div>
-        <BottomNav />
+        <div aria-hidden="true" style={{ height: 64, flex: "0 0 auto" }} />
+        </main>
+        <RenderSlot render={BottomNav} />
         {quickGuideOpen && <ClientQuickGuideModal providers={providers} language={language} onClose={() => setQuickGuideOpen(false)} onOpenDirectory={() => { setQuickGuideOpen(false); navigate("search-results"); }} />}
       </div>
     );
@@ -1281,13 +1254,15 @@ export default function Home() {
     const isSaved = savedProviders.includes(p.record_id);
     return (
       <div style={{ background: bg, minHeight: "100vh", fontSize, color: fg, paddingBottom: 100 }}>
-        <HamburgerMenu />
-        <Header
+        <RenderSlot render={HamburgerMenu} />
+        <RenderSlot render={Header}
           title={<span style={{ fontWeight: 700, fontSize: 16, color: fg }}>Resource Detail</span>}
           showBack
           showBookmark
           onBookmark={() => toggleSave(p.record_id)}
         />
+        <main id="main-content" key={screen} tabIndex={-1} className="zs-screen">
+        <Breadcrumbs style={{ padding: "10px 16px 0" }} items={[{ label: t.home, onSelect: () => navigate("home") }, ...(prevScreen !== "home" && SCREEN_TITLES[prevScreen] && prevScreen !== screen ? [{ label: SCREEN_TITLES[prevScreen] as string, onSelect: goBack }] : []), { label: p.org_name }]} />
         <div style={{ padding: "16px" }}>
           {/* Provider header */}
           <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
@@ -1299,7 +1274,7 @@ export default function Home() {
             <div style={{ flex: 1 }}>
               <h2 style={{ fontSize: 18, fontWeight: 700, color: fg, margin: "0 0 4px" }}>{p.org_name}</h2>
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "#16a34a", fontWeight: 600 }}><CheckCircle2 size={14} aria-hidden="true" /> {t.verified}</span>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "#15803d", fontWeight: 600 }}><CheckCircle2 size={14} aria-hidden="true" /> {t.verified}</span>
               </div>
               <div style={{ fontSize: 12, color: subFg, marginTop: 4 }}>
                 {p.address} · <span style={{ color: fg }}>{getDistanceLabel(p)}</span>
@@ -1321,7 +1296,7 @@ export default function Home() {
             ].map((btn) => (
               <button key={btn.label} onClick={btn.action} style={{
                 flex: 1, display: "flex", flexDirection: "column", alignItems: "center",
-                gap: 4, padding: "10px 4px", background: "#159d92", color: "#fff",
+                gap: 4, padding: "10px 4px", background: "var(--zs-color-brand)", color: "#fff",
                 border: "none", borderRadius: 10, cursor: "pointer", fontSize: 11, fontWeight: 600,
               }}>
                 <btn.icon size={20} strokeWidth={1.8} fill={btn.label === "Save" && isSaved ? "currentColor" : "none"} aria-hidden="true" />
@@ -1359,7 +1334,7 @@ export default function Home() {
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
               {p.service_category.split("/").map((s) => (
                 <span key={s} style={{
-                  padding: "4px 10px", background: "#eff6ff", color: "#159d92",
+                  padding: "4px 10px", background: "#eff6ff", color: "var(--zs-color-brand)",
                   borderRadius: 20, fontSize: 12, fontWeight: 500,
                 }}>{language === "es" ? spanishServiceLabel(s.trim()) : s.trim()}</span>
               ))}
@@ -1377,7 +1352,7 @@ export default function Home() {
             <div style={{ fontWeight: 700, fontSize: 12, color: subFg, letterSpacing: 0.5, marginBottom: 6 }}>LOCATION</div>
             <div style={{ fontSize: 14, color: fg }}>{p.address}</div>
             <div style={{ fontSize: 12, color: subFg, marginTop: 4 }}>{p.city}, CA</div>
-            {p.ada_access && <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: "#16a34a", marginTop: 4 }}><Accessibility size={14} aria-hidden="true" /> {language === "es" ? `Acceso: ${p.ada_access}` : p.ada_access}</div>}
+            {p.ada_access && <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: "#15803d", marginTop: 4 }}><Accessibility size={14} aria-hidden="true" /> {language === "es" ? `Acceso: ${p.ada_access}` : p.ada_access}</div>}
           </div>
           {/* Additional info */}
           {(p.walk_in_allowed || p.referral_required || p.language_access) && (
@@ -1394,11 +1369,12 @@ export default function Home() {
             border: "none", borderRadius: 10, fontWeight: 700, fontSize: 16, cursor: "pointer", marginBottom: 12,
           }}>{t.iNeedThisHelp}</button>
           <button onClick={() => p.phone && window.open(`tel:${p.phone}`)} style={{
-            width: "100%", padding: "14px 0", background: "transparent", color: "#16a34a",
+            width: "100%", padding: "14px 0", background: "transparent", color: "#15803d",
             border: "2px solid #16a34a", borderRadius: 10, fontWeight: 700, fontSize: 16, cursor: "pointer",
           }}><Phone size={17} strokeWidth={1.8} aria-hidden="true" /> {t.callToConfirm}</button>
         </div>
-        <BottomNav />
+        </main>
+        <RenderSlot render={BottomNav} />
       </div>
     );
   }
@@ -1407,6 +1383,7 @@ export default function Home() {
   if (screen === "referral-destination") {
     return (
       <div style={{ background: bg, minHeight: "100vh", fontSize, color: fg, paddingTop: 16, paddingRight: 16, paddingBottom: 100, paddingLeft: 16 }}>
+        <main id="main-content" key={screen} tabIndex={-1} className="zs-screen">
         <ReferralDestinationFlow
           providers={providers}
           initialProviderId={selectedProvider?.record_id}
@@ -1415,7 +1392,8 @@ export default function Home() {
           onBack={goBack}
           onConfirm={(provider, handoff) => { setSelectedProvider(provider); setAorHandoff(handoff); setAorStep(2); setScreen("gethelp"); setActiveNavTab("gethelp"); }}
         />
-        <BottomNav />
+        </main>
+        <RenderSlot render={BottomNav} />
       </div>
     );
   }
@@ -1437,8 +1415,10 @@ export default function Home() {
     ];
     return (
       <div style={{ background: bg, minHeight: "100vh", fontSize, color: fg, paddingBottom: 100 }}>
-        <HamburgerMenu />
-        <Header title={<span style={{ fontWeight: 700, fontSize: 16, color: fg }}>{t.beforeYouGo}</span>} showBack />
+        <RenderSlot render={HamburgerMenu} />
+        <RenderSlot render={Header} title={<span style={{ fontWeight: 700, fontSize: 16, color: fg }}>{t.beforeYouGo}</span>} showBack />
+        <main id="main-content" key={screen} tabIndex={-1} className="zs-screen">
+        {selectedProvider && <Breadcrumbs style={{ padding: "10px 16px 0" }} items={[{ label: t.home, onSelect: () => navigate("home") }, { label: selectedProvider.org_name, onSelect: () => navigate("resource-detail") }, { label: t.beforeYouGo }]} />}
         <div style={{ padding: "16px" }}>
           <p style={{ color: subFg, fontSize: 13, marginBottom: 20, lineHeight: 1.5 }}>{t.beforeYouGoSubtitle}</p>
           <div style={{ fontWeight: 700, fontSize: 12, color: subFg, letterSpacing: 0.5, marginBottom: 12 }}>{t.checklist}</div>
@@ -1447,7 +1427,7 @@ export default function Home() {
               <input type="checkbox"
                 checked={checklist[item.key as keyof typeof checklist]}
                 onChange={() => setChecklist((prev) => ({ ...prev, [item.key]: !prev[item.key as keyof typeof checklist] }))}
-                style={{ width: 20, height: 20, marginTop: 2, accentColor: "#159d92", flexShrink: 0 }} />
+                style={{ width: 20, height: 20, marginTop: 2, accentColor: "var(--zs-color-brand)", flexShrink: 0 }} />
               <div>
                 <div style={{ fontSize: 14, fontWeight: 500, color: fg }}>{item.label}</div>
                 <div style={{ fontSize: 12, color: subFg, marginTop: 2 }}>{item.desc}</div>
@@ -1460,7 +1440,7 @@ export default function Home() {
               <input type="checkbox"
                 checked={checklist[item.key as keyof typeof checklist]}
                 onChange={() => setChecklist((prev) => ({ ...prev, [item.key]: !prev[item.key as keyof typeof checklist] }))}
-                style={{ width: 20, height: 20, marginTop: 2, accentColor: "#159d92", flexShrink: 0 }} />
+                style={{ width: 20, height: 20, marginTop: 2, accentColor: "var(--zs-color-brand)", flexShrink: 0 }} />
               <div>
                 <div style={{ fontSize: 14, fontWeight: 500, color: fg }}>{item.label}</div>
                 <div style={{ fontSize: 12, color: subFg, marginTop: 2 }}>{item.desc}</div>
@@ -1470,19 +1450,20 @@ export default function Home() {
           {selectedProvider && (
             <div style={{ padding: "12px 14px", background: "#f0fdf4", borderRadius: 10, marginTop: 8, marginBottom: 20 }}>
               <div style={{ fontSize: 12, color: subFg, marginBottom: 4 }}>Check Hours</div>
-              <div style={{ fontSize: 14, color: "#16a34a", fontWeight: 600 }}>Open now · Closes 5:00 PM</div>
+              <div style={{ fontSize: 14, color: "#15803d", fontWeight: 600 }}>Open now · Closes 5:00 PM</div>
             </div>
           )}
           <button onClick={() => navigate("directions")} style={{
-            width: "100%", padding: "16px 0", background: "#159d92", color: "#fff",
+            width: "100%", padding: "16px 0", background: "var(--zs-color-brand)", color: "#fff",
             border: "none", borderRadius: 10, fontWeight: 700, fontSize: 16, cursor: "pointer", marginBottom: 12,
           }}>{t.iReadyToGo}</button>
           <button onClick={() => selectedProvider && window.open(`tel:${selectedProvider.phone}`)} style={{
-            width: "100%", padding: "14px 0", background: "transparent", color: "#16a34a",
+            width: "100%", padding: "14px 0", background: "transparent", color: "#15803d",
             border: "2px solid #16a34a", borderRadius: 10, fontWeight: 700, fontSize: 16, cursor: "pointer",
           }}><Phone size={17} strokeWidth={1.8} aria-hidden="true" /> {t.callToConfirm}</button>
         </div>
-        <BottomNav />
+        </main>
+        <RenderSlot render={BottomNav} />
       </div>
     );
   }
@@ -1498,28 +1479,30 @@ export default function Home() {
     ] as const;
     const transitSteps = [
       { icon: Navigation, color: "#6b7280", step: "Walk to Sisk Rd & Standiford Ave", detail: "0.4 mi · 8 min" },
-      { icon: BusFront, color: "#159d92", step: "Board Route 6 (Turlock)", detail: "Sisk Rd & Standiford Ave · 9:48 AM" },
-      { icon: BusFront, color: "#159d92", step: "Ride 12 stops (24 min)", detail: "Stay on until 9th St & I St" },
+      { icon: BusFront, color: "var(--zs-color-brand)", step: "Board Route 6 (Turlock)", detail: "Sisk Rd & Standiford Ave · 9:48 AM" },
+      { icon: BusFront, color: "var(--zs-color-brand)", step: "Ride 12 stops (24 min)", detail: "Stay on until 9th St & I St" },
       { icon: Navigation, color: "#6b7280", step: "Walk to destination", detail: "0.2 mi · 3 min" },
-      { icon: MapPin, color: "#16a34a", step: p ? (p.org_name.length > 35 ? p.org_name.slice(0, 35) + "…" : p.org_name) : "Destination", detail: p ? p.address : "" },
+      { icon: MapPin, color: "#15803d", step: p ? (p.org_name.length > 35 ? p.org_name.slice(0, 35) + "…" : p.org_name) : "Destination", detail: p ? p.address : "" },
     ];
     const driveSteps = [
-      { icon: Landmark, color: "#159d92", step: "Head south on your street", detail: "0.3 mi" },
+      { icon: Landmark, color: "var(--zs-color-brand)", step: "Head south on your street", detail: "0.3 mi" },
       { icon: ArrowRight, color: "#6b7280", step: "Turn right onto Standiford Ave", detail: "1.2 mi" },
       { icon: ArrowLeft, color: "#6b7280", step: "Turn left onto 9th St", detail: "0.8 mi" },
-      { icon: MapPin, color: "#16a34a", step: p ? (p.org_name.length > 35 ? p.org_name.slice(0, 35) + "…" : p.org_name) : "Destination", detail: p ? p.address : "" },
+      { icon: MapPin, color: "#15803d", step: p ? (p.org_name.length > 35 ? p.org_name.slice(0, 35) + "…" : p.org_name) : "Destination", detail: p ? p.address : "" },
     ];
     const steps = dirMode === "transit" ? transitSteps : driveSteps;
     const selectedMode = modes.find((m) => m.id === dirMode) || modes[1];
     return (
       <div style={{ background: bg, minHeight: "100vh", fontSize, color: fg, paddingBottom: 100 }}>
-        <HamburgerMenu />
-        <Header title={<span style={{ fontWeight: 700, fontSize: 16, color: fg }}>{t.directions}</span>} showBack />
+        <RenderSlot render={HamburgerMenu} />
+        <RenderSlot render={Header} title={<span style={{ fontWeight: 700, fontSize: 16, color: fg }}>{t.directions}</span>} showBack />
+        <main id="main-content" key={screen} tabIndex={-1} className="zs-screen">
+        {selectedProvider && <Breadcrumbs style={{ padding: "10px 16px 0" }} items={[{ label: t.home, onSelect: () => navigate("home") }, { label: selectedProvider.org_name, onSelect: () => navigate("resource-detail") }, { label: t.directions }]} />}
         <div style={{ padding: "16px" }}>
           {/* From/To */}
           <div style={{ background: cardBg, border: `1px solid ${borderColor}`, borderRadius: 12, padding: "14px", marginBottom: 16 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-              <div style={{ width: 12, height: 12, borderRadius: "50%", background: "#159d92", flexShrink: 0 }} />
+              <div style={{ width: 12, height: 12, borderRadius: "50%", background: "var(--zs-color-brand)", flexShrink: 0 }} />
               <span style={{ fontSize: 14, color: subFg }}>From</span>
               <span style={{ fontSize: 14, color: fg, fontWeight: 500 }}>{t.yourLocation}</span>
             </div>
@@ -1538,8 +1521,8 @@ export default function Home() {
               <button key={mode.id} onClick={() => setDirMode(mode.id)} style={{
                 flex: 1, padding: "8px 4px", display: "flex", flexDirection: "column",
                 alignItems: "center", gap: 2, borderRadius: 8,
-                background: dirMode === mode.id ? "#159d92" : cardBg,
-                border: `1px solid ${dirMode === mode.id ? "#159d92" : borderColor}`,
+                background: dirMode === mode.id ? "var(--zs-color-brand)" : cardBg,
+                border: `1px solid ${dirMode === mode.id ? "var(--zs-color-brand)" : borderColor}`,
                 color: dirMode === mode.id ? "#fff" : fg, cursor: "pointer", fontSize: 11,
               }}>
                 <mode.icon size={18} strokeWidth={1.8} aria-hidden="true" />
@@ -1553,11 +1536,11 @@ export default function Home() {
             display: "flex", justifyContent: "space-between", alignItems: "center",
           }}>
             <div>
-              <div style={{ fontWeight: 700, fontSize: 22, color: "#159d92" }}>{selectedMode.time}</div>
+              <div style={{ fontWeight: 700, fontSize: 22, color: "var(--zs-color-brand)" }}>{selectedMode.time}</div>
               <div style={{ fontSize: 13, color: subFg }}>{selectedMode.detail}</div>
             </div>
             {dirMode === "transit" && (
-              <div style={{ padding: "4px 10px", background: "#dcfce7", color: "#16a34a", borderRadius: 20, fontSize: 12, fontWeight: 600 }}>
+              <div style={{ padding: "4px 10px", background: "#dcfce7", color: "#15803d", borderRadius: 20, fontSize: 12, fontWeight: 600 }}>
                 <><Accessibility size={15} aria-hidden="true" /> Accessible</>
               </div>
             )}
@@ -1582,11 +1565,12 @@ export default function Home() {
             </div>
           ))}
           <button onClick={() => navigate("map")} style={{
-            width: "100%", padding: "14px 0", background: cardBg, color: "#159d92",
-            border: `2px solid #159d92`, borderRadius: 10, fontWeight: 700, fontSize: 15, cursor: "pointer", marginTop: 8,
+            width: "100%", padding: "14px 0", background: cardBg, color: "var(--zs-color-brand)",
+            border: "2px solid var(--zs-color-brand)", borderRadius: 10, fontWeight: 700, fontSize: 15, cursor: "pointer", marginTop: 8,
           }}><Map size={17} strokeWidth={1.8} aria-hidden="true" /> {t.viewOnMap}</button>
         </div>
-        <BottomNav />
+        </main>
+        <RenderSlot render={BottomNav} />
       </div>
     );
   }
@@ -1598,22 +1582,23 @@ export default function Home() {
     const displayList = favTab === "favorites" ? savedList : recentList;
     return (
       <div style={{ background: bg, minHeight: "100vh", fontSize, color: fg, paddingBottom: 80 }}>
-        <HamburgerMenu />
-        <Header title={<span style={{ fontWeight: 700, fontSize: 18, color: fg }}>{t.saved}</span>} />
+        <RenderSlot render={HamburgerMenu} />
+        <RenderSlot render={Header} title={<span style={{ fontWeight: 700, fontSize: 18, color: fg }}>{t.saved}</span>} />
+        <main id="main-content" key={screen} tabIndex={-1} className="zs-screen">
         {/* Tabs */}
         <div style={{ display: "flex", padding: "12px 16px", gap: 8 }}>
           <button onClick={() => setFavTab("favorites")} style={{
             padding: "8px 20px", borderRadius: 20,
-            background: favTab === "favorites" ? "#159d92" : cardBg,
+            background: favTab === "favorites" ? "var(--zs-color-brand)" : cardBg,
             color: favTab === "favorites" ? "#fff" : fg,
-            border: `1px solid ${favTab === "favorites" ? "#159d92" : borderColor}`,
+            border: `1px solid ${favTab === "favorites" ? "var(--zs-color-brand)" : borderColor}`,
             fontWeight: 600, fontSize: 14, cursor: "pointer",
           }}>Favorites</button>
           <button onClick={() => setFavTab("recent")} style={{
             padding: "8px 20px", borderRadius: 20,
-            background: favTab === "recent" ? "#159d92" : cardBg,
+            background: favTab === "recent" ? "var(--zs-color-brand)" : cardBg,
             color: favTab === "recent" ? "#fff" : fg,
-            border: `1px solid ${favTab === "recent" ? "#159d92" : borderColor}`,
+            border: `1px solid ${favTab === "recent" ? "var(--zs-color-brand)" : borderColor}`,
             fontWeight: 600, fontSize: 14, cursor: "pointer",
           }}>{t.recentlyViewed}</button>
         </div>
@@ -1657,7 +1642,8 @@ export default function Home() {
             })
           )}
         </div>
-        <BottomNav />
+        </main>
+        <RenderSlot render={BottomNav} />
       </div>
     );
   }
@@ -1667,8 +1653,9 @@ export default function Home() {
     const aorNeeds = ["Emergency Shelter", "Food Assistance", "Medical Care", "Mental Health", "Housing", "Transportation", "Legal Help", "Employment", "Documents / ID", "Other"];
     return (
       <div style={{ background: bg, minHeight: "100vh", fontSize, color: fg, paddingBottom: 80 }}>
-        <HamburgerMenu />
-        <Header title={<img onError={(event) => { event.currentTarget.style.display = "none"; }} src={AOR_LOGO} alt="AOR" style={{ height: 32 }} />} />
+        <RenderSlot render={HamburgerMenu} />
+        <RenderSlot render={Header} title={<img onError={(event) => { event.currentTarget.style.display = "none"; }} src={AOR_LOGO} alt="AOR" style={{ height: 32 }} />} />
+        <main id="main-content" key={screen} tabIndex={-1} className="zs-screen">
         <div style={{ padding: "16px" }}>
           {/* Admin & Researcher Access */}
           <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
@@ -1703,7 +1690,7 @@ export default function Home() {
               </div>
               <button onClick={() => { setAorSubmitted(false); setAorStep(0); setAorData({ name: "", dob: "", phone: "", situation: "", needs: [], consent: false }); setAorHandoff(null); navigate("home"); }}
                 style={{
-                  padding: "14px 32px", background: "#159d92", color: "#fff",
+                  padding: "14px 32px", background: "var(--zs-color-brand)", color: "#fff",
                   border: "none", borderRadius: 10, fontWeight: 700, fontSize: 15, cursor: "pointer",
                 }}>Return Home</button>
             </div>
@@ -1714,7 +1701,7 @@ export default function Home() {
                 {[0, 1, 2].map((step) => (
                   <div key={step} style={{
                     flex: 1, height: 4, borderRadius: 2,
-                    background: step <= aorStep ? "#159d92" : borderColor,
+                    background: step <= aorStep ? "var(--zs-color-brand)" : borderColor,
                   }} />
                 ))}
               </div>
@@ -1732,8 +1719,8 @@ export default function Home() {
                           needs: selected ? prev.needs.filter((n) => n !== need) : [...prev.needs, need],
                         }))} style={{
                           padding: "8px 14px", borderRadius: 20,
-                          background: selected ? "#159d92" : cardBg,
-                          border: `1px solid ${selected ? "#159d92" : borderColor}`,
+                          background: selected ? "var(--zs-color-brand)" : cardBg,
+                          border: `1px solid ${selected ? "var(--zs-color-brand)" : borderColor}`,
                           color: selected ? "#fff" : fg,
                           fontWeight: selected ? 600 : 400, cursor: "pointer", fontSize: 13,
                         }}>{need}</button>
@@ -1752,7 +1739,7 @@ export default function Home() {
                   </div>
                   <button onClick={() => setAorStep(1)} disabled={aorData.needs.length === 0}
                     style={{
-                      width: "100%", padding: "14px 0", background: aorData.needs.length > 0 ? "#159d92" : "#9ca3af",
+                      width: "100%", padding: "14px 0", background: aorData.needs.length > 0 ? "var(--zs-color-brand)" : "#9ca3af",
                       color: "#fff", border: "none", borderRadius: 10, fontWeight: 700, fontSize: 15, cursor: aorData.needs.length > 0 ? "pointer" : "not-allowed",
                     }}>{t.next} →</button>
                 </div>
@@ -1786,7 +1773,7 @@ export default function Home() {
                       border: `1px solid ${borderColor}`, borderRadius: 10, fontWeight: 600, fontSize: 15, cursor: "pointer",
                     }}>{t.back}</button>
                     <button onClick={() => setAorStep(2)} style={{
-                      flex: 2, padding: "14px 0", background: "#159d92", color: "#fff",
+                      flex: 2, padding: "14px 0", background: "var(--zs-color-brand)", color: "#fff",
                       border: "none", borderRadius: 10, fontWeight: 700, fontSize: 15, cursor: "pointer",
                     }}>{t.next} →</button>
                   </div>
@@ -1801,7 +1788,7 @@ export default function Home() {
                     <div style={{ fontWeight: 600, fontSize: 13, color: subFg, marginBottom: 8 }}>NEEDS SELECTED</div>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                       {aorData.needs.map((n) => (
-                        <span key={n} style={{ padding: "4px 10px", background: "#eff6ff", color: "#159d92", borderRadius: 20, fontSize: 12 }}>{n}</span>
+                        <span key={n} style={{ padding: "4px 10px", background: "#eff6ff", color: "var(--zs-color-brand)", borderRadius: 20, fontSize: 12 }}>{n}</span>
                       ))}
                     </div>
                   </div>
@@ -1817,7 +1804,7 @@ export default function Home() {
                   <label style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 20, cursor: "pointer" }}>
                     <input type="checkbox" checked={aorData.consent}
                       onChange={() => setAorData((prev) => ({ ...prev, consent: !prev.consent }))}
-                      style={{ width: 18, height: 18, marginTop: 2, accentColor: "#159d92", flexShrink: 0 }} />
+                      style={{ width: 18, height: 18, marginTop: 2, accentColor: "var(--zs-color-brand)", flexShrink: 0 }} />
                     <span style={{ fontSize: 13, color: subFg, lineHeight: 1.5 }}>
                       I consent to sharing this information with ZipShift and partner organizations to connect me with services.
                     </span>
@@ -1841,7 +1828,8 @@ export default function Home() {
             </>
           )}
         </div>
-        <BottomNav />
+        </main>
+        <RenderSlot render={BottomNav} />
       </div>
     );
   }
@@ -1850,8 +1838,9 @@ export default function Home() {
   if (screen === "more") {
     return (
       <div style={{ background: bg, minHeight: "100vh", fontSize, color: fg, paddingBottom: 80 }}>
-        <HamburgerMenu />
-        <Header title={<img onError={(event) => { event.currentTarget.style.display = "none"; }} src={ZIPSHIFT_LOGO} alt="ZipShift" style={{ height: 28 }} />} />
+        <RenderSlot render={HamburgerMenu} />
+        <RenderSlot render={Header} title={<img onError={(event) => { event.currentTarget.style.display = "none"; }} src={ZIPSHIFT_LOGO} alt="ZipShift" style={{ height: 28 }} />} />
+        <main id="main-content" key={screen} tabIndex={-1} className="zs-screen">
         <div style={{ padding: "16px" }}>
           {/* Profile card */}
           <div style={{
@@ -1866,7 +1855,7 @@ export default function Home() {
             <div style={{ fontWeight: 700, fontSize: 16, color: fg, marginBottom: 6 }}>{clientUser?.displayName || t.helloThere}</div>
             <div style={{ fontSize: 13, color: subFg, marginBottom: 14 }}>{clientUser ? "Manage your saved resources, referral history, and accessibility preferences." : t.signInDesc}</div>
             <button onClick={startProfileSignIn} style={{
-              padding: "10px 24px", background: "#159d92", color: "#fff",
+              padding: "10px 24px", background: "var(--zs-color-brand)", color: "#fff",
               border: "none", borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: "pointer",
             }}>{clientUser ? "View Profile" : t.signIn}</button>
           </div>
@@ -1895,11 +1884,11 @@ export default function Home() {
             <div style={{ color: subFg, fontSize: 12, marginBottom: 8, fontWeight: 600 }}>{t.language}</div>
             <div style={{ display: "flex", gap: 8 }}>
               {(["en", "es"] as const).map((lang) => (
-                <button key={lang} onClick={() => setLanguage(lang)} style={{
+                <button key={lang} type="button" lang={lang} aria-pressed={language === lang} onClick={() => { setLanguage(lang); announce(lang === "es" ? "Idioma: Español" : "Language: English"); }} style={{
                   flex: 1, padding: "8px 0", borderRadius: 8,
-                  border: `2px solid ${language === lang ? "#159d92" : borderColor}`,
+                  border: `2px solid ${language === lang ? "var(--zs-color-brand)" : borderColor}`,
                   background: language === lang ? "#eff6ff" : bg,
-                  color: language === lang ? "#159d92" : fg,
+                  color: language === lang ? "var(--zs-color-brand)" : fg,
                   fontWeight: language === lang ? 700 : 400, cursor: "pointer", fontSize: 14,
                 }}>{lang === "en" ? "English" : "Español"}</button>
               ))}
@@ -1911,25 +1900,17 @@ export default function Home() {
             {[
               { label: t.largeText, value: largeText, toggle: () => setLargeText(!largeText) },
               { label: t.darkMode, value: darkMode, toggle: () => setDarkMode(!darkMode) },
+                { label: t.reduceMotion, value: reduceMotion, toggle: () => setReduceMotion(!reduceMotion) },
             ].map((opt) => (
               <div key={opt.label} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
                 <span style={{ color: fg, fontSize: 14 }}>{opt.label}</span>
-                <button onClick={opt.toggle} style={{
-                  width: 44, height: 24, borderRadius: 12,
-                  background: opt.value ? "#159d92" : "#d1d5db",
-                  border: "none", cursor: "pointer", position: "relative",
-                }}>
-                  <div style={{
-                    position: "absolute", top: 2, left: opt.value ? 22 : 2,
-                    width: 20, height: 20, borderRadius: "50%", background: "#fff",
-                    transition: "left 0.2s",
-                  }} />
-                </button>
+                <button type="button" role="switch" aria-checked={opt.value} aria-label={opt.label} onClick={opt.toggle} className="zs-switch" />
               </div>
             ))}
           </div>
         </div>
-        <BottomNav />
+        </main>
+        <RenderSlot render={BottomNav} />
       </div>
     );
   }
@@ -1938,8 +1919,9 @@ export default function Home() {
   if (screen === "about") {
     return (
       <div style={{ background: bg, minHeight: "100vh", fontSize, color: fg, paddingBottom: 80 }}>
-        <HamburgerMenu />
-        <Header title={<span style={{ fontWeight: 700, fontSize: 16, color: fg }}>{t.aboutApp}</span>} showBack />
+        <RenderSlot render={HamburgerMenu} />
+        <RenderSlot render={Header} title={<span style={{ fontWeight: 700, fontSize: 16, color: fg }}>{t.aboutApp}</span>} showBack />
+        <main id="main-content" key={screen} tabIndex={-1} className="zs-screen">
         <div style={{ padding: "20px 16px" }}>
           <div style={{ textAlign: "center", marginBottom: 24 }}>
             <img onError={(event) => { event.currentTarget.style.display = "none"; }} src={ZIPSHIFT_LOGO} alt="ZipShift" style={{ height: 60, marginBottom: 12 }} />
@@ -1969,11 +1951,12 @@ export default function Home() {
             </div>
           </div>
           <button onClick={() => navigate("feedback")} style={{
-            width: "100%", padding: "14px 0", background: "#159d92", color: "#fff",
+            width: "100%", padding: "14px 0", background: "var(--zs-color-brand)", color: "#fff",
             border: "none", borderRadius: 10, fontWeight: 700, fontSize: 15, cursor: "pointer",
           }}><MessageSquare size={17} strokeWidth={1.8} aria-hidden="true" /> Send Feedback</button>
         </div>
-        <BottomNav />
+        </main>
+        <RenderSlot render={BottomNav} />
       </div>
     );
   }
@@ -1982,8 +1965,9 @@ export default function Home() {
   if (screen === "feedback") {
     return (
       <div style={{ background: bg, minHeight: "100vh", fontSize, color: fg, paddingBottom: 80 }}>
-        <HamburgerMenu />
-        <Header title={<span style={{ fontWeight: 700, fontSize: 16, color: fg }}>{t.feedback}</span>} showBack />
+        <RenderSlot render={HamburgerMenu} />
+        <RenderSlot render={Header} title={<span style={{ fontWeight: 700, fontSize: 16, color: fg }}>{t.feedback}</span>} showBack />
+        <main id="main-content" key={screen} tabIndex={-1} className="zs-screen">
         <div style={{ padding: "20px 16px" }}>
           {feedbackSubmitted ? (
             <div style={{ textAlign: "center", padding: "40px 20px" }}>
@@ -1992,7 +1976,7 @@ export default function Home() {
               <div style={{ fontSize: 14, color: subFg, marginBottom: 24 }}>Your feedback helps us improve ZipShift for everyone.</div>
               <button onClick={() => { setFeedbackSubmitted(false); setFeedbackAccess(null); setFeedbackBarriers([]); setFeedbackText(""); setFeedbackError(""); navigate("home"); }}
                 style={{
-                  padding: "14px 32px", background: "#159d92", color: "#fff",
+                  padding: "14px 32px", background: "var(--zs-color-brand)", color: "#fff",
                   border: "none", borderRadius: 10, fontWeight: 700, fontSize: 15, cursor: "pointer",
                 }}>Return Home</button>
             </div>
@@ -2002,16 +1986,17 @@ export default function Home() {
               <div style={{ fontWeight: 700, fontSize: 17, color: fg, marginBottom: 8 }}>Was this easy to access?</div>
               <div style={{ color: subFg, fontSize: 13, lineHeight: 1.5, marginBottom: 14 }}>Your feedback helps identify access barriers and improve services for everyone.</div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 20 }}>
-                {[{ value: "easy" as const, label: "Easy", detail: "I was able to get what I needed" }, { value: "not_easy" as const, label: "Not easy", detail: "I had trouble accessing this" }].map((choice) => <button key={choice.value} onClick={() => { setFeedbackAccess(choice.value); setFeedbackError(""); }} style={{ textAlign: "left", padding: 14, background: feedbackAccess === choice.value ? "#e3f5f3" : cardBg, border: `2px solid ${feedbackAccess === choice.value ? "#159d92" : borderColor}`, borderRadius: 11, color: fg, cursor: "pointer" }}><span style={{ display: "block", fontWeight: 800, fontSize: 15 }}>{choice.label}</span><span style={{ display: "block", marginTop: 5, fontSize: 12, color: subFg, lineHeight: 1.4 }}>{choice.detail}</span></button>)}
+                {[{ value: "easy" as const, label: "Easy", detail: "I was able to get what I needed" }, { value: "not_easy" as const, label: "Not easy", detail: "I had trouble accessing this" }].map((choice) => <button key={choice.value} onClick={() => { setFeedbackAccess(choice.value); setFeedbackError(""); }} style={{ textAlign: "left", padding: 14, background: feedbackAccess === choice.value ? "#e3f5f3" : cardBg, border: `2px solid ${feedbackAccess === choice.value ? "var(--zs-color-brand)" : borderColor}`, borderRadius: 11, color: fg, cursor: "pointer" }}><span style={{ display: "block", fontWeight: 800, fontSize: 15 }}>{choice.label}</span><span style={{ display: "block", marginTop: 5, fontSize: 12, color: subFg, lineHeight: 1.4 }}>{choice.detail}</span></button>)}
               </div>
               <div style={{ fontWeight: 700, fontSize: 14, color: fg, marginBottom: 8 }}>What made it difficult? <span style={{ fontWeight: 400, color: subFg }}>(select all that apply)</span></div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>{["Documents", "Language", "Transit", "Hours", "Wrong information"].map((barrier) => { const active = feedbackBarriers.includes(barrier); return <button key={barrier} onClick={() => setFeedbackBarriers((current) => active ? current.filter((item) => item !== barrier) : [...current, barrier])} style={{ padding: "9px 11px", border: `1px solid ${active ? "#159d92" : borderColor}`, borderRadius: 9, background: active ? "#e3f5f3" : cardBg, color: active ? "#0f766e" : fg, fontSize: 12, fontWeight: active ? 800 : 600 }}>{barrier}</button>; })}</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>{["Documents", "Language", "Transit", "Hours", "Wrong information"].map((barrier) => { const active = feedbackBarriers.includes(barrier); return <button key={barrier} onClick={() => setFeedbackBarriers((current) => active ? current.filter((item) => item !== barrier) : [...current, barrier])} style={{ padding: "9px 11px", border: `1px solid ${active ? "var(--zs-color-brand)" : borderColor}`, borderRadius: 9, background: active ? "#e3f5f3" : cardBg, color: active ? "#0f766e" : fg, fontSize: 12, fontWeight: active ? 800 : 600 }}>{barrier}</button>; })}</div>
               <textarea value={feedbackText} onChange={(e) => setFeedbackText(e.target.value)} placeholder="Tell us more (optional)" style={{ width: "100%", minHeight: 100, padding: "12px", borderRadius: 10, border: `1px solid ${borderColor}`, background: cardBg, color: fg, fontSize: 14, resize: "vertical", boxSizing: "border-box" }} />
-              <button onClick={async () => { if (!feedbackAccess || (!feedbackBarriers.length && !feedbackText.trim())) { setFeedbackError("Choose an access outcome and add a barrier or note."); return; } try { const response = await fetch("/api/feedback", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ accessRating: feedbackAccess, barriers: feedbackBarriers, narrative: feedbackText }) }); const body = await response.json(); if (!response.ok) throw new Error(body?.error || "Unable to submit feedback."); setFeedbackSubmitted(true); } catch (error) { setFeedbackError(error instanceof Error ? error.message : "Unable to submit feedback."); } }} style={{ marginTop: 16, width: "100%", padding: "14px 0", background: "#159d92", color: "#fff", border: "none", borderRadius: 10, fontWeight: 700, fontSize: 15, cursor: "pointer" }}>Submit access feedback</button>
+              <button onClick={async () => { if (!feedbackAccess || (!feedbackBarriers.length && !feedbackText.trim())) { setFeedbackError("Choose an access outcome and add a barrier or note."); return; } try { const response = await fetch("/api/feedback", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ accessRating: feedbackAccess, barriers: feedbackBarriers, narrative: feedbackText }) }); const body = await response.json(); if (!response.ok) throw new Error(body?.error || "Unable to submit feedback."); setFeedbackSubmitted(true); } catch (error) { setFeedbackError(error instanceof Error ? error.message : "Unable to submit feedback."); } }} style={{ marginTop: 16, width: "100%", padding: "14px 0", background: "var(--zs-color-brand)", color: "#fff", border: "none", borderRadius: 10, fontWeight: 700, fontSize: 15, cursor: "pointer" }}>Submit access feedback</button>
             </>
           )}
         </div>
-        <BottomNav />
+        </main>
+        <RenderSlot render={BottomNav} />
       </div>
     );
   }
@@ -2020,8 +2005,9 @@ export default function Home() {
   if (screen === "privacy") {
     return (
       <div style={{ background: bg, minHeight: "100vh", fontSize, color: fg, paddingBottom: 80 }}>
-        <HamburgerMenu />
-        <Header title={<span style={{ fontWeight: 700, fontSize: 16, color: fg }}>{t.privacy}</span>} showBack />
+        <RenderSlot render={HamburgerMenu} />
+        <RenderSlot render={Header} title={<span style={{ fontWeight: 700, fontSize: 16, color: fg }}>{t.privacy}</span>} showBack />
+        <main id="main-content" key={screen} tabIndex={-1} className="zs-screen">
         <div style={{ padding: "20px 16px" }}>
           {[
             { title: "Information We Collect", body: "ZipShift collects only the minimum information necessary to provide services. This includes location data (with your permission), search queries, and saved resources. Covered-ZIP search demand is stored only as an anonymous daily aggregate; ZipShift does not retain IP addresses, account identifiers, or search terms with that metric." },
@@ -2036,7 +2022,8 @@ export default function Home() {
             </div>
           ))}
         </div>
-        <BottomNav />
+        </main>
+        <RenderSlot render={BottomNav} />
       </div>
     );
   }
@@ -2045,8 +2032,9 @@ export default function Home() {
   if (screen === "terms") {
     return (
       <div style={{ background: bg, minHeight: "100vh", fontSize, color: fg, paddingBottom: 80 }}>
-        <HamburgerMenu />
-        <Header title={<span style={{ fontWeight: 700, fontSize: 16, color: fg }}>{t.terms}</span>} showBack />
+        <RenderSlot render={HamburgerMenu} />
+        <RenderSlot render={Header} title={<span style={{ fontWeight: 700, fontSize: 16, color: fg }}>{t.terms}</span>} showBack />
+        <main id="main-content" key={screen} tabIndex={-1} className="zs-screen">
         <div style={{ padding: "20px 16px" }}>
           {[
             { title: "Acceptance of Terms", body: "By using ZipShift, you agree to these Terms of Use. If you do not agree, please do not use the application." },
@@ -2061,7 +2049,8 @@ export default function Home() {
             </div>
           ))}
         </div>
-        <BottomNav />
+        </main>
+        <RenderSlot render={BottomNav} />
       </div>
     );
   }
@@ -2070,17 +2059,18 @@ export default function Home() {
   if (screen === "settings") {
     return (
       <div style={{ background: bg, minHeight: "100vh", fontSize, color: fg, paddingBottom: 80 }}>
-        <HamburgerMenu />
-        <Header title={<span style={{ fontWeight: 700, fontSize: 16, color: fg }}>Settings</span>} showBack />
+        <RenderSlot render={HamburgerMenu} />
+        <RenderSlot render={Header} title={<span style={{ fontWeight: 700, fontSize: 16, color: fg }}>Settings</span>} showBack />
+        <main id="main-content" key={screen} tabIndex={-1} className="zs-screen">
         <div style={{ padding: "16px" }}>
           <div style={{ color: subFg, fontSize: 12, fontWeight: 600, marginBottom: 10 }}>{t.language}</div>
           <div style={{ display: "flex", gap: 8, marginBottom: 24 }}>
             {(["en", "es"] as const).map((lang) => (
-              <button key={lang} onClick={() => setLanguage(lang)} style={{
+              <button key={lang} type="button" lang={lang} aria-pressed={language === lang} onClick={() => { setLanguage(lang); announce(lang === "es" ? "Idioma: Español" : "Language: English"); }} style={{
                 flex: 1, padding: "10px 0", borderRadius: 8,
-                border: `2px solid ${language === lang ? "#159d92" : borderColor}`,
+                border: `2px solid ${language === lang ? "var(--zs-color-brand)" : borderColor}`,
                 background: language === lang ? "#eff6ff" : bg,
-                color: language === lang ? "#159d92" : fg,
+                color: language === lang ? "var(--zs-color-brand)" : fg,
                 fontWeight: language === lang ? 700 : 400, cursor: "pointer", fontSize: 14,
               }}>{lang === "en" ? "English" : "Español"}</button>
             ))}
@@ -2089,116 +2079,108 @@ export default function Home() {
           {[
             { label: t.largeText, value: largeText, toggle: () => setLargeText(!largeText) },
             { label: t.darkMode, value: darkMode, toggle: () => setDarkMode(!darkMode) },
+                { label: t.reduceMotion, value: reduceMotion, toggle: () => setReduceMotion(!reduceMotion) },
           ].map((opt) => (
             <div key={opt.label} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
               <span style={{ color: fg, fontSize: 15 }}>{opt.label}</span>
-              <button onClick={opt.toggle} style={{
-                width: 44, height: 24, borderRadius: 12,
-                background: opt.value ? "#159d92" : "#d1d5db",
-                border: "none", cursor: "pointer", position: "relative",
-              }}>
-                <div style={{
-                  position: "absolute", top: 2, left: opt.value ? 22 : 2,
-                  width: 20, height: 20, borderRadius: "50%", background: "#fff",
-                  transition: "left 0.2s",
-                }} />
-              </button>
+              <button type="button" role="switch" aria-checked={opt.value} aria-label={opt.label} onClick={opt.toggle} className="zs-switch" />
             </div>
           ))}
         </div>
-        <BottomNav />
+        </main>
+        <RenderSlot render={BottomNav} />
       </div>
     );
   }
 
   if (screen === "guided-entry") {
-    return <GuidedAccess providers={providers} language={language} onBack={() => setScreen("home")} onOpenProvider={(provider) => { openProvider(provider as Provider); }} onOpenDirectory={() => setScreen("county-directory")} onFieldEvent={(eventType) => sendFieldEvent(eventType, undefined, { language })} />;
+    return <div key={screen} className="zs-screen"><GuidedAccess providers={providers} language={language} onBack={() => setScreen("home")} onOpenProvider={(provider) => { openProvider(provider as Provider); }} onOpenDirectory={() => setScreen("county-directory")} onFieldEvent={(eventType) => sendFieldEvent(eventType, undefined, { language })} /></div>;
   }
 
   // Intake Form Screen
   if (screen === "intake-form") {
     return (
-      <IntakeFormFlow
+      <main id="main-content" key={screen} className="zs-screen"><IntakeFormFlow
         onBack={() => setScreen("gethelp")}
         onSubmit={(data) => {
           console.log("Intake form submitted:", data);
           alert("Thank you! Your intake form has been submitted.");
           setScreen("home");
         }}
-      />
+      /></main>
     );
   }
 
   // Admin Dashboard Screen
   if (screen === "admin-dashboard") {
     return (
-      <AdminDashboard
+      <div key={screen} className="zs-screen"><AdminDashboard
         onBack={() => setScreen("home")}
         onSessionChange={handleWorkspaceSession}
-      />
+      /></div>
     );
   }
 
   // Researcher Analytics Screen
   if (screen === "researcher-analytics") {
     return (
-      <ResearcherAnalytics
+      <div key={screen} className="zs-screen"><ResearcherAnalytics
         onBack={() => setScreen("home")}
         onSessionChange={handleWorkspaceSession}
-      />
+      /></div>
     );
   }
 
   if (screen === "role-portal") {
-    return <RolePortal user={sessionUser} onNavigate={(destination) => setScreen(destination as Screen)} />;
+    return <div key={screen} className="zs-screen"><RolePortal user={sessionUser} onNavigate={(destination) => setScreen(destination as Screen)} /></div>;
   }
   if (screen === "staff-intake") {
-    return <StaffIntakeFlow onBack={() => setScreen("role-portal")} onComplete={() => setScreen("referrals-dispatch")} />;
+    return <div key={screen} className="zs-screen"><StaffIntakeFlow onBack={() => setScreen("role-portal")} onComplete={() => setScreen("referrals-dispatch")} /></div>;
   }
   if (screen === "referrals-dispatch") {
-    return <ReferralsDispatch onBack={() => setScreen("role-portal")} onNewReferral={() => setScreen("staff-intake")} onNotifications={() => setScreen("notifications")} />;
+    return <div key={screen} className="zs-screen"><ReferralsDispatch onBack={() => setScreen("role-portal")} onNewReferral={() => setScreen("staff-intake")} onNotifications={() => setScreen("notifications")} /></div>;
   }
   if (screen === "care-coordination") {
-    return <CareCoordinationPortal onBack={() => setScreen("role-portal")} />;
+    return <div key={screen} className="zs-screen"><CareCoordinationPortal onBack={() => setScreen("role-portal")} /></div>;
   }
   if (screen === "specialist-dashboard") {
-    return <SpecialistDashboard onBack={() => setScreen("role-portal")} onOpenPortal={() => setScreen("care-coordination")} />;
+    return <div key={screen} className="zs-screen"><SpecialistDashboard onBack={() => setScreen("role-portal")} onOpenPortal={() => setScreen("care-coordination")} /></div>;
   }
   if (screen === "client-profile") {
     return (
-      <ClientProfile
+      <main id="main-content" key={screen} className="zs-screen"><ClientProfile
         providers={providers}
         onBack={() => setScreen("more")}
         onSessionChange={handleClientSession}
-      />
+      /></main>
     );
   }
 
   if (screen === "client-directory") {
-    return <ClientDirectory onBack={() => setScreen("more")} />;
+    return <main id="main-content" key={screen} className="zs-screen"><ClientDirectory onBack={() => setScreen("more")} /></main>;
   }
   if (screen === "emergency-directory") {
-    return <EmergencyResourceDirectory language={language} onBack={() => setScreen("more")} />;
+    return <div key={screen} className="zs-screen"><EmergencyResourceDirectory language={language} onBack={() => setScreen("more")} /></div>;
   }
   if (screen === "county-directory") {
-    return <CountyResourceDirectory language={language} onBack={() => setScreen("more")} />;
+    return <div key={screen} className="zs-screen"><CountyResourceDirectory language={language} onBack={() => setScreen("more")} /></div>;
   }
   if (screen === "notifications") {
     return (
-      <NotificationCenter
+      <div key={screen} className="zs-screen"><NotificationCenter
         onBack={() => setScreen("more")}
         onProfile={() => setScreen("client-profile")}
         onHelp={() => setScreen("gethelp")}
         onRead={() => setNotificationCount((count) => Math.max(0, count - 1))}
-      />
+      /></div>
     );
   }
   // Referral History Screen
   if (screen === "referral-history") {
     return (
-      <ReferralHistory
+      <div key={screen} className="zs-screen"><ReferralHistory
         onBack={() => setScreen("more")}
-      />
+      /></div>
     );
   }
 
