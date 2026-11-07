@@ -136,7 +136,11 @@ describe("Client drop-off safeguards", () => {
     expect(save.getAttribute("aria-pressed")).toBe("true");
     expect(JSON.parse(localStorage.getItem("zipshift.saved.local") || "[]")).toHaveLength(1);
     expect(container.textContent).not.toContain("Closes 5:00 PM");
-    const results = await axe.run(container, AXE_OPTIONS);
+    // A pending live-region announcement can fire while axe runs; keep it inside act().
+    let results!: axe.AxeResults;
+    await act(async () => {
+      results = await axe.run(container, AXE_OPTIONS);
+    });
     expect(results.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`)).toEqual([]);
 
     act(() => buttonByText("I Need This Help").click());
