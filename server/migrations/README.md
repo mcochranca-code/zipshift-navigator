@@ -39,3 +39,14 @@ Apply migrations before deploying code that reads or writes their fields, then v
 - Added secure online structured fill-and-sign popups to each official Intake Packet Library form without changing the source PDFs or removing the existing upload/review workflow.
 - Added QR codes and directory last-verified dates to branded quick-guide PDF resource cards. QR codes resolve to the provider website when available, otherwise the provider address/name.
 - Added additive Privacy & Consent and Research Consent launchers on the existing landing screen. They route clients to the profile/consent flow and staff, researchers, or administrators to their existing protected workspaces/sign-in boundaries.
+
+## 20261106 — Access outcomes and housing status (SDOH)
+
+`20261106_add_access_outcomes_and_housing_status.sql` supports the research question "do people experiencing homelessness actually reach the services they are referred to, and what blocks them?"
+
+- `referral_cases.housing_status` (HUD-aligned: `unsheltered`, `emergency_shelter`, `transitional_housing`, `doubled_up`, `at_risk`, `housed`, `prefer_not_to_say`), `housing_status_updated_at`, and `sdoh_consent`. Housing status is optional, editable by admins and care-team staff, and stored only when `sdoh_consent` is true; withdrawing that consent clears the value.
+- `referral_cases.contact_preference` (`call`, `text`, `shared_phone_no_details`, `case_manager`, `check_back_with_code`) so people without a phone of their own are not lost after intake.
+- `referral_cases.access_outcome` / `connected_at`: the current outcome, denormalized for queue views.
+- `referral_access_outcomes`: append-only ledger of outcomes (`connected`, `not_connected`, `lost_contact`) with structured barrier codes (`no_transport`, `no_id`, `no_phone`, `no_address`, `hours`, `eligibility`, `waitlist`, `cost`, `documentation`, `safety`, `stigma`, `language`, `other`), the housing status at the time of the outcome, connection time, and source (`staff` or `client`). Time to connection is `connected_at − referral_cases.created_at`.
+
+Writes are limited to administrators and staff with a care-team `specialist_role`; researchers without a care-team role read only `/api/research/access-outcomes`, which returns aggregates by housing status with cells of 1–10 suppressed (plus complementary suppression) and an aggregate-only CSV. Vocabulary and suppression rules live in `shared/accessOutcomes.ts`.

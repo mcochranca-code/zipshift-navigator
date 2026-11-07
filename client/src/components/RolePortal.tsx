@@ -1,9 +1,10 @@
 import React from "react";
 import { Bell, BriefcaseBusiness, ChevronRight, ClipboardList, Compass, FileBarChart2, HeartHandshake, LayoutDashboard, ShieldCheck, UsersRound } from "lucide-react";
 import { useState } from "react";
+import { isResearchOnly } from "../../../shared/accessPolicy";
 
 type PortalDestination = "home" | "admin-dashboard" | "researcher-analytics" | "staff-intake" | "referrals-dispatch" | "care-coordination" | "specialist-dashboard" | "notifications";
-type PortalUser = { displayName: string; email: string; role: "client" | "admin" | "researcher" } | null;
+type PortalUser = { displayName: string; email: string; role: "client" | "admin" | "researcher"; specialistRole?: string | null } | null;
 
 type RolePortalProps = {
   onNavigate: (destination: PortalDestination) => void;
@@ -19,6 +20,10 @@ const roles = [
 
 export default function RolePortal({ onNavigate, user = null }: RolePortalProps) {
   const [mode, setMode] = useState<"workspace" | "website">("workspace");
+  // Research-only accounts cannot open identified care workspaces, so those
+  // shortcuts and cards are not offered to them.
+  const researchOnly = isResearchOnly(user);
+  const visibleRoles = researchOnly ? roles.filter((item) => item.key === "client" || item.key === "researcher") : roles;
   return (
     <main className="zipshift-portal" aria-labelledby="portal-title">
       <header className="zipshift-portal-header">
@@ -29,14 +34,16 @@ export default function RolePortal({ onNavigate, user = null }: RolePortalProps)
       {mode === "website" && <section className="zipshift-portal-website-card"><div><span className="zipshift-portal-eyebrow">PUBLIC NAVIGATOR</span><h2>Find verified help near you</h2><p>Browse the public ZipShift resource directory, plan a route, and start a secure client profile when you are ready.</p></div><button type="button" className="zipshift-portal-access" onClick={() => onNavigate("home")}>Open website <ChevronRight size={16} /></button></section>}
       <nav className="zipshift-portal-tabs" aria-label="Portal workflow shortcuts">
         <button type="button" onClick={() => onNavigate("home")}><Compass size={16} /> Client</button>
-        <button type="button" onClick={() => onNavigate("staff-intake")}><ClipboardList size={16} /> Staff intake</button>
-        <button type="button" onClick={() => onNavigate("referrals-dispatch")}><BriefcaseBusiness size={16} /> Referrals</button>
-        <button type="button" onClick={() => onNavigate("care-coordination")}><HeartHandshake size={16} /> Care team</button>
-        <button type="button" onClick={() => onNavigate("specialist-dashboard")}><LayoutDashboard size={16} /> Specialist dashboard</button>
+        {!researchOnly && <>
+          <button type="button" onClick={() => onNavigate("staff-intake")}><ClipboardList size={16} /> Staff intake</button>
+          <button type="button" onClick={() => onNavigate("referrals-dispatch")}><BriefcaseBusiness size={16} /> Referrals</button>
+          <button type="button" onClick={() => onNavigate("care-coordination")}><HeartHandshake size={16} /> Care team</button>
+          <button type="button" onClick={() => onNavigate("specialist-dashboard")}><LayoutDashboard size={16} /> Specialist dashboard</button>
+        </>}
         <button type="button" onClick={() => onNavigate("notifications")}><Bell size={16} /> Notifications</button>
       </nav>
       <section className="zipshift-portal-grid" aria-label="Available ZipShift workspaces">
-        {roles.map(({ key, label, description, features, icon: Icon, action, accent }) => (
+        {visibleRoles.map(({ key, label, description, features, icon: Icon, action, accent }) => (
           <article className="zipshift-portal-card" key={key} style={{ "--portal-accent": accent } as React.CSSProperties}>
             <div className="zipshift-portal-card-icon"><Icon size={21} aria-hidden="true" /></div>
             <h2>{label}</h2>

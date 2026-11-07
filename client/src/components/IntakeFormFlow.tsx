@@ -1,8 +1,9 @@
 import { useState } from "react";
+import { CONTACT_PREFERENCES, CONTACT_PREFERENCE_LABELS, HOUSING_STATUSES, HOUSING_STATUS_LABELS, contactNeedsPhone, isContactPreference } from "../../../shared/accessOutcomes";
 
 interface IntakeFormProps {
   onBack: () => void;
-  onSubmit: (data: IntakeData) => void;
+  onSubmit: (data: IntakeData, referralId?: string) => void;
 }
 
 interface IntakeData {
@@ -28,6 +29,7 @@ interface IntakeData {
   ageVerified: boolean;
   locationPrivacy: boolean;
   dataSharing: boolean;
+  sdohConsent: boolean;
   contactPreference: string;
   accessibilityNeeds: string[];
 }
@@ -52,7 +54,8 @@ export default function IntakeFormFlow({ onBack, onSubmit }: IntakeFormProps) {
     ageVerified: false,
     locationPrivacy: true,
     dataSharing: false,
-    contactPreference: "phone",
+    sdohConsent: false,
+    contactPreference: "call",
     accessibilityNeeds: [],
   });
 
@@ -79,8 +82,10 @@ export default function IntakeFormFlow({ onBack, onSubmit }: IntakeFormProps) {
   };
 
   const canProceed = () => {
-    if (step === 1) return formData.firstName && formData.lastName && formData.dateOfBirth;
-    if (step === 2) return formData.housingStatus && formData.servicesNeeded.length > 0;
+    // Only a first name or nickname is needed to start. Requiring a last name,
+    // date of birth or housing status stopped people without ID from finishing.
+    if (step === 1) return formData.firstName.trim().length > 0;
+    if (step === 2) return formData.servicesNeeded.length > 0;
     if (step === 3) return true;
     if (step === 4) return formData.ageVerified && formData.dataSharing;
     return false;
@@ -97,12 +102,13 @@ export default function IntakeFormFlow({ onBack, onSubmit }: IntakeFormProps) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: `${formData.firstName} ${formData.lastName}`,
-          dob: formData.dateOfBirth,
-          phone: formData.phone,
-          situation: formData.housingStatus,
+          name: `${formData.firstName} ${formData.lastName}`.trim(),
+          phone: contactNeedsPhone(isContactPreference(formData.contactPreference) ? formData.contactPreference : null) ? formData.phone : null,
           needs: formData.servicesNeeded,
           consent: formData.dataSharing,
+          housingStatus: formData.sdohConsent ? formData.housingStatus || null : null,
+          sdohConsent: formData.sdohConsent && Boolean(formData.housingStatus),
+          contactPreference: isContactPreference(formData.contactPreference) ? formData.contactPreference : null,
         }),
       });
 
@@ -111,8 +117,8 @@ export default function IntakeFormFlow({ onBack, onSubmit }: IntakeFormProps) {
         throw new Error(data.error || "Failed to submit intake form");
       }
 
-      const data = await response.json();
-      onSubmit(formData);
+      const data = await response.json() as { referralId?: string };
+      onSubmit(formData, data.referralId);
       // Referral ID: data.referralId is available for confirmation screen
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to submit form");
@@ -154,7 +160,7 @@ export default function IntakeFormFlow({ onBack, onSubmit }: IntakeFormProps) {
           <div className="space-y-4">
             <h2 className="text-lg font-bold">Personal Information</h2>
             <div>
-              <label className="block text-sm font-medium mb-1">First Name *</label>
+              <label className="block text-sm font-medium mb-1">First name or nickname *</label>
               <input
                 type="text"
                 value={formData.firstName}
@@ -165,7 +171,7 @@ export default function IntakeFormFlow({ onBack, onSubmit }: IntakeFormProps) {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Last Name *</label>
+              <label className="block text-sm font-medium mb-1">Last name (optional)</label>
               <input
                 type="text"
                 value={formData.lastName}
@@ -176,7 +182,7 @@ export default function IntakeFormFlow({ onBack, onSubmit }: IntakeFormProps) {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Date of Birth *</label>
+              <label className="block text-sm font-medium mb-1">Date of birth (optional)</label>
               <input
                 type="date"
                 value={formData.dateOfBirth}
@@ -215,18 +221,16 @@ export default function IntakeFormFlow({ onBack, onSubmit }: IntakeFormProps) {
           <div className="space-y-4">
             <h2 className="text-lg font-bold">Your Situation</h2>
             <div>
-              <label className="block text-sm font-medium mb-2">Housing Status *</label>
+              <label htmlFor="intake-housing-status" className="block text-sm font-medium mb-2">Where are you staying right now? (optional)</label>
               <select
+                id="intake-housing-status"
                 value={formData.housingStatus}
                 onChange={(e) => handleInputChange("housingStatus", e.target.value)}
                 className="w-full border rounded px-3 py-2"
                 disabled={loading}
               >
-                <option value="">Select...</option>
-                <option value="homeless">Currently Homeless</option>
-                <option value="at-risk">At Risk of Homelessness</option>
-                <option value="unstable">Unstable Housing</option>
-                <option value="housed">Housed</option>
+                <option value="">Skip this question</option>
+                {HOUSING_STATUSES.map((status) => <option key={status} value={status}>{HOUSING_STATUS_LABELS[status].en}</option>)}
               </select>
             </div>
             <div>
@@ -358,18 +362,31 @@ export default function IntakeFormFlow({ onBack, onSubmit }: IntakeFormProps) {
               </label>
             </div>
 
+            {formData.housingStatus && <div className="bg-slate-50 border border-slate-200 rounded p-3">
+              <label className="flex items-start gap-2">
+                <input
+                  type="checkbox"
+                  checked={formData.sdohConsent}
+                  onChange={(e) => handleInputChange("sdohConsent", e.target.checked)}
+                  className="w-4 h-4 mt-1"
+                  disabled={loading}
+                />
+                <span className="text-sm">
+                  You can use where I'm staying to understand who gets help and what gets in the way. (Optional. Researchers only see totals, never your name. If you leave this unchecked, we don't save it.)
+                </span>
+              </label>
+            </div>}
+
             <div>
-              <label className="block text-sm font-medium mb-2">Preferred Contact Method</label>
+              <label htmlFor="intake-contact-preference" className="block text-sm font-medium mb-2">How can we reach you?</label>
               <select
+                id="intake-contact-preference"
                 value={formData.contactPreference}
                 onChange={(e) => handleInputChange("contactPreference", e.target.value)}
                 className="w-full border rounded px-3 py-2"
                 disabled={loading}
               >
-                <option value="phone">Phone</option>
-                <option value="email">Email</option>
-                <option value="text">Text Message</option>
-                <option value="in-person">In Person Only</option>
+                {CONTACT_PREFERENCES.map((preference) => <option key={preference} value={preference}>{CONTACT_PREFERENCE_LABELS[preference].en}</option>)}
               </select>
             </div>
 

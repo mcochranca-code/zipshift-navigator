@@ -134,7 +134,7 @@ describe("navigation helpers", () => {
 
   it("announces messages through the polite live region", async () => {
     render(<LiveAnnouncer />);
-    announce("Search results screen");
+    act(() => announce("Search results screen"));
     await settle(80);
     expect(container.querySelector("#zs-live-polite")?.textContent).toBe("Search results screen");
   });
@@ -263,7 +263,10 @@ describe("key screens pass axe", () => {
 
   it("referrals dispatch (loading and loaded)", async () => {
     render(<ReferralsDispatch onBack={() => undefined} onNewReferral={() => undefined} onNotifications={() => undefined} />);
-    await expectNoAxeViolations(container);
+    // The data fetch resolves while axe is running, so keep that update inside act().
+    await act(async () => {
+      await expectNoAxeViolations(container);
+    });
     await settle(20);
     await expectNoAxeViolations(container);
   });

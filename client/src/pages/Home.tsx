@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
-import { Accessibility, Activity, ArrowLeft, ArrowRight, Bell, Brain, Building2, BusFront, CalendarDays, CheckCircle2, ChevronRight, CircleHelp, Clock3, ClipboardList, FileText, Globe2, Heart, HeartPulse, Home as HomeIcon, House, Info, Landmark, Map, MapPin, Menu, MessageSquare, MoreHorizontal, Navigation, Phone, Scale, Search, Settings, ShieldCheck, SlidersHorizontal, Sparkles, Stethoscope, UserCircle, UsersRound, Utensils, X } from "lucide-react";
+import { Accessibility, Activity, ArrowLeft, ArrowRight, Bell, Brain, Building2, BusFront, CalendarDays, CheckCircle2, ChevronRight, CircleHelp, Clock3, ClipboardList, FileText, Globe2, Heart, HeartPulse, Home as HomeIcon, House, Info, Landmark, Map, MapPin, Menu, MessageSquare, MoreHorizontal, Navigation, Phone, Scale, Search, Settings, Share2, ShieldCheck, SlidersHorizontal, Sparkles, Stethoscope, UserCircle, UsersRound, Utensils, X } from "lucide-react";
 import ZipShiftMap from "../components/ZipShiftMap";
 import IntakeFormFlow from "../components/IntakeFormFlow";
 import AdminDashboard from "../components/AdminDashboard";
@@ -14,6 +14,7 @@ import CountyResourceDirectory from "../components/CountyResourceDirectory";
 import ClientQuickGuideModal from "../components/ClientQuickGuideModal";
 import ReferralDestinationFlow from "../components/ReferralDestinationFlow";
 import RolePortal from "../components/RolePortal";
+import { isResearchOnly } from "../../../shared/accessPolicy";
 import StaffIntakeFlow from "../components/StaffIntakeFlow";
 import ReferralsDispatch from "../components/ReferralsDispatch";
 import CareCoordinationPortal from "../components/CareCoordinationPortal";
@@ -23,6 +24,8 @@ import providersData from "../data/providers.json";
 import { announce, useDialogA11y, useScreenChangeFocus } from "../lib/a11y";
 import { BrandedSplash } from "../components/motion/Loaders";
 import Breadcrumbs from "../components/Breadcrumbs";
+import { acceptsWalkIns, documentsToBring, hoursStatus, isVerified, noIdRequired } from "../../../shared/providerAccess";
+import { CONTACT_PREFERENCES, CONTACT_PREFERENCE_LABELS, HOUSING_STATUSES, HOUSING_STATUS_LABELS, contactNeedsPhone, type ContactPreference, type HousingStatus } from "../../../shared/accessOutcomes";
 
 interface Provider {
   record_id: string;
@@ -66,6 +69,7 @@ interface ClientSessionUser {
   email: string;
   displayName: string;
   role: "client" | "admin" | "researcher";
+  specialistRole?: string | null;
 }
 
 type GlobalEditorSettings = {
@@ -169,11 +173,35 @@ function getDistanceLabel(p: Provider): string {
   return DISTANCES[p.record_id] || "2.0 mi";
 }
 
-function getStatusLabel(p: Provider): { open: boolean; label: string } {
-  const h = (p.hours || "").toLowerCase();
-  if (h.includes("24/7") || h.includes("24 hours")) return { open: true, label: "Open 24/7" };
-  if (h.includes("closed")) return { open: false, label: "Closed" };
-  return { open: true, label: "Open · Closes 5:00 PM" };
+type HoursDisplay = { state: "open" | "closed" | "unknown"; word: string; label: string; color: string };
+
+/**
+ * Hours shown to people deciding whether to make the trip. Only parseable
+ * schedules get an open/closed answer; everything else says to call first.
+ * (Previously every non-24/7 listing showed "Open · Closes 5:00 PM".)
+ */
+function hoursDisplay(p: Provider, language: "en" | "es" = "en", now = new Date()): HoursDisplay {
+  const status = hoursStatus(p.hours, now);
+  const es = language === "es";
+  const hoursText = (p.hours || "").trim();
+  const short = hoursText.length > 48 ? `${hoursText.slice(0, 47)}…` : hoursText;
+  if (status.state === "open") return { state: "open", word: es ? "Abierto" : "Open", label: status.closesAt ? (es ? `Cierra a las ${status.closesAt}` : `Closes ${status.closesAt}`) : (es ? "Abierto 24/7" : "Open 24/7"), color: "#15803d" };
+  if (status.state === "closed") return { state: "closed", word: es ? "Cerrado ahora" : "Closed now", label: short, color: "#b91c1c" };
+  return { state: "unknown", word: es ? "Llame para confirmar el horario" : "Call to confirm hours", label: short || (es ? "Horario no publicado" : "Hours not listed"), color: "#b45309" };
+}
+
+const LOCAL_KEYS = { saved: "zipshift.saved.local", recent: "zipshift.recent.local", language: "zipshift.language", largeText: "zipshift.largeText", lowData: "zipshift.lowData", sharedDevice: "zipshift.sharedDevice", lastReferral: "zipshift.lastReferralCode" } as const;
+function readLocal<T>(key: string, fallback: T): T {
+  try { const raw = localStorage.getItem(key); return raw === null ? fallback : JSON.parse(raw) as T; } catch { return fallback; }
+}
+function writeLocal(key: string, value: unknown) {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* storage may be unavailable */ }
+}
+function removeLocal(keys: string[]) {
+  try { keys.forEach((key) => localStorage.removeItem(key)); } catch { /* storage may be unavailable */ }
+}
+function prefersSaveData() {
+  try { return Boolean((navigator as Navigator & { connection?: { saveData?: boolean } }).connection?.saveData); } catch { return false; }
 }
 
 function spanishServiceLabel(value: string) {
@@ -185,7 +213,8 @@ function spanishProviderDescription(provider: Provider) {
   return `${spanishServiceLabel(provider.service_category)} en ${provider.city}. Confirma horarios, documentos y disponibilidad antes de ir.`;
 }
 
-function sendFieldEvent(eventType: "guided_start" | "guided_completion" | "guided_dropoff" | "resource_open" | "resource_call" | "resource_directions" | "resource_website", resourceId?: string, metadata?: Record<string, unknown>) {
+type FieldEventType = "guided_start" | "guided_completion" | "guided_dropoff" | "resource_open" | "resource_call" | "resource_directions" | "resource_website" | "resource_share" | "resource_save" | "before_you_go_open" | "directions_handoff" | "search_no_results";
+function sendFieldEvent(eventType: FieldEventType, resourceId?: string, metadata?: Record<string, unknown>) {
   let sessionKey = "";
   try { const key = "zipshift.field-test.session"; sessionKey = localStorage.getItem(key) || crypto.randomUUID().replaceAll("-", ""); localStorage.setItem(key, sessionKey); } catch { /* optional when storage is unavailable */ }
   void fetch("/api/analytics/field-event", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ eventType, resourceId, sessionKey, metadata }) }).catch(() => undefined);
@@ -227,9 +256,17 @@ export default function Home() {
   const [screen, setScreen] = useState<Screen>("splash");
   const [prevScreen, setPrevScreen] = useState<Screen>("home");
   const [selectedProvider, setSelectedProvider] = useState<Provider | null>(null);
-  const [language, setLanguage] = useState<"en" | "es">("en");
+  const [language, setLanguage] = useState<"en" | "es">(() => readLocal<string>(LOCAL_KEYS.language, "en") === "es" ? "es" : "en");
   const [darkMode, setDarkMode] = useState(false);
-  const [largeText, setLargeText] = useState(false);
+  const [largeText, setLargeText] = useState(() => readLocal<boolean>(LOCAL_KEYS.largeText, false) === true);
+  // Low-data mode skips the promo video and provider logos; it starts on when the browser asks to save data.
+  const [lowData, setLowData] = useState(() => readLocal<boolean | null>(LOCAL_KEYS.lowData, null) ?? prefersSaveData());
+  // Shared-phone mode keeps saved places, recent views and referral codes off this device.
+  const [sharedDevice, setSharedDevice] = useState(() => readLocal<boolean>(LOCAL_KEYS.sharedDevice, false) === true);
+  const [walkInOnly, setWalkInOnly] = useState(false);
+  const [noIdOnly, setNoIdOnly] = useState(false);
+  const [lastReferralCode, setLastReferralCode] = useState<string | null>(() => readLocal<boolean>(LOCAL_KEYS.sharedDevice, false) ? null : readLocal<string | null>(LOCAL_KEYS.lastReferral, null));
+  const [shareStatus, setShareStatus] = useState("");
   const [reduceMotion, setReduceMotion] = useState(() => {
     try { return localStorage.getItem("zipshift.reduceMotion") === "true"; } catch { return false; }
   });
@@ -244,20 +281,16 @@ export default function Home() {
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [maxDistance, setMaxDistance] = useState(25);
   const [openNow, setOpenNow] = useState(false);
-  const [savedProviders, setSavedProviders] = useState<string[]>([]);
-  const [recentlyViewed, setRecentlyViewed] = useState<string[]>([]);
+  const [savedProviders, setSavedProviders] = useState<string[]>(() => readLocal<boolean>(LOCAL_KEYS.sharedDevice, false) ? [] : readLocal<string[]>(LOCAL_KEYS.saved, []).filter((id) => typeof id === "string"));
+  const [recentlyViewed, setRecentlyViewed] = useState<string[]>(() => readLocal<boolean>(LOCAL_KEYS.sharedDevice, false) ? [] : readLocal<string[]>(LOCAL_KEYS.recent, []).filter((id) => typeof id === "string"));
   const [favTab, setFavTab] = useState<"favorites" | "recent">("favorites");
-  const [checklist, setChecklist] = useState({
-    photoId: false, mediCal: false, proofHomeless: false,
-    referralPaper: false, caseManager: false,
-    hoursConfirmed: false, walkIn: false, transitPlanned: false, language: false,
-  });
+  const [checklist, setChecklist] = useState<Record<string, boolean>>({});
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [selectedCity, setSelectedCity] = useState<"all" | "Modesto" | "Turlock" | "Ceres">("all");
   const [activeNavTab, setActiveNavTab] = useState<"home" | "map" | "favorites" | "gethelp" | "more">("home");
   const [dirMode, setDirMode] = useState<"drive" | "transit" | "walk" | "bike">("transit");
   const [aorStep, setAorStep] = useState(0);
-  const [aorData, setAorData] = useState({ name: "", dob: "", phone: "", situation: "", needs: [] as string[], consent: false });
+  const [aorData, setAorData] = useState({ name: "", phone: "", situation: "", needs: [] as string[], consent: false, contactPreference: "" as ContactPreference | "", housingStatus: "" as HousingStatus | "", sdohConsent: false });
   const [aorHandoff, setAorHandoff] = useState<{ outcome: string; failureReason: string; documentBurden: string; transitFeasibility: string; reviewConfirmed: boolean } | null>(null);
   const [aorSubmitted, setAorSubmitted] = useState(false);
   const [aorSubmitting, setAorSubmitting] = useState(false);
@@ -354,10 +387,25 @@ export default function Home() {
     try { localStorage.setItem("zipshift.reduceMotion", String(reduceMotion)); } catch { /* localStorage may be unavailable */ }
   }, [reduceMotion]);
 
+  useEffect(() => { writeLocal(LOCAL_KEYS.language, language); }, [language]);
+  useEffect(() => { writeLocal(LOCAL_KEYS.largeText, largeText); }, [largeText]);
+  useEffect(() => { writeLocal(LOCAL_KEYS.lowData, lowData); }, [lowData]);
+  useEffect(() => {
+    writeLocal(LOCAL_KEYS.sharedDevice, sharedDevice);
+    if (sharedDevice) removeLocal([LOCAL_KEYS.saved, LOCAL_KEYS.recent, LOCAL_KEYS.lastReferral, "zipshift.field-test.session"]);
+  }, [sharedDevice]);
+  useEffect(() => {
+    if (sharedDevice) return;
+    writeLocal(LOCAL_KEYS.saved, savedProviders);
+    writeLocal(LOCAL_KEYS.recent, recentlyViewed);
+  }, [savedProviders, recentlyViewed, sharedDevice]);
+
   useEffect(() => {
     const requestedScreen = new URLSearchParams(window.location.search).get("screen") as Screen | null;
     const allowedScreens: Screen[] = ["admin-dashboard", "researcher-analytics", "client-profile", "client-directory", "county-directory", "emergency-directory", "notifications", "role-portal", "staff-intake", "referrals-dispatch", "care-coordination", "specialist-dashboard"];
-    const targetScreen = requestedScreen && allowedScreens.includes(requestedScreen) ? requestedScreen : "role-portal";
+    // People looking for help land on the public navigator; staff reach the
+    // workspace selector from "Staff sign-in" or ?screen=role-portal.
+    const targetScreen = requestedScreen && allowedScreens.includes(requestedScreen) ? requestedScreen : "home";
     const t = setTimeout(() => { if (!authenticatedSession.current) setScreen(targetScreen); }, 2200);
     return () => clearTimeout(t);
   }, []);
@@ -394,7 +442,11 @@ export default function Home() {
           const savedResponse = await fetch("/api/saved-resources", { credentials: "include" });
           if (savedResponse.ok) {
             const saved = await savedResponse.json() as { saved?: Array<{ providerId: string }> };
-            setSavedProviders((saved.saved || []).map((item) => item.providerId));
+            const serverIds = (saved.saved || []).map((item) => item.providerId);
+            // Places saved before signing in move into the account instead of being lost.
+            const localIds = readLocal<string[]>(LOCAL_KEYS.saved, []).filter((id) => typeof id === "string" && !serverIds.includes(id));
+            await Promise.all(localIds.map((id) => fetch(`/api/saved-resources/${encodeURIComponent(id)}`, { method: "PUT", credentials: "include" }).catch(() => undefined)));
+            setSavedProviders([...serverIds, ...localIds]);
           }
         }
         // A valid seven-day session survives refreshes and reopens the
@@ -433,6 +485,19 @@ export default function Home() {
     document.body.classList.toggle("zipshift-client-shell", clientWorkspace);
     return () => document.body.classList.remove("zipshift-client-shell");
   }, [screen]);
+
+  // Count searches that end with nothing to show (no query text is sent).
+  const noResultsKey = `${screen}|${searchQuery}|${selectedCategories.join(",")}|${openNow}|${walkInOnly}|${noIdOnly}|${selectedZip}|${maxDistance}`;
+  const lastNoResultsKey = useRef("");
+  useEffect(() => {
+    if (screen !== "search-results" || lastNoResultsKey.current === noResultsKey) return;
+    const timer = window.setTimeout(() => {
+      if (filteredProviders.length > 0) return;
+      lastNoResultsKey.current = noResultsKey;
+      sendFieldEvent("search_no_results", undefined, { categories: selectedCategories.length, walkInOnly, noIdOnly, openNow, hasQuery: Boolean(searchQuery.trim()) });
+    }, 2500);
+    return () => window.clearTimeout(timer);
+  }, [noResultsKey]);
 
   // Move focus to the new screen's heading and announce it (single-page screen router).
   useScreenChangeFocus(screen, SCREEN_TITLES[screen], { skip: screen === "splash" });
@@ -597,15 +662,17 @@ export default function Home() {
     const pCat = getCategoryForProvider(p);
     const matchesCat = selectedCategories.length === 0 || selectedCategories.includes(pCat);
     
-    const distance = parseFloat(DISTANCES[p.record_id]?.split(" ")[0] || "999");
-    const matchesDistance = distance <= maxDistance;
+    // "Any distance" (25+) never hides a listing, and a listing with no known
+    // distance is not treated as 999 miles away (that hid half the directory).
+    const knownDistance = DISTANCES[p.record_id] ? parseFloat(DISTANCES[p.record_id].split(" ")[0]) : null;
+    const matchesDistance = maxDistance >= 25 || knownDistance === null || knownDistance <= maxDistance;
     
-    const status = getStatusLabel(p);
-    const matchesOpenNow = !openNow || status.open;
+    const matchesOpenNow = !openNow || hoursStatus(p.hours, new Date()).state === "open";
+    const matchesAccess = (!walkInOnly || acceptsWalkIns(p)) && (!noIdOnly || noIdRequired(p));
     const providerZip = p.address?.match(/\b\d{5}\b/)?.[0] || "";
     const matchesZip = selectedZip === "all" || providerZip === selectedZip;
     
-    return matchesSearch && matchesCat && matchesDistance && matchesOpenNow && matchesZip;
+    return matchesSearch && matchesCat && matchesDistance && matchesOpenNow && matchesZip && matchesAccess;
   });
 
   // Theme
@@ -647,11 +714,12 @@ export default function Home() {
     if (!aorData.consent || !aorData.needs.length) return;
     setAorSubmitting(true); setAorSubmitError("");
     try {
-      const response = await fetch("/api/intake", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ name: aorData.name || "ZipShift client", phone: aorData.phone, situation: aorData.situation, needs: aorData.needs, consent: aorData.consent, providerId: selectedProvider?.record_id, handoff: aorHandoff }) });
+      const response = await fetch("/api/intake", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ name: aorData.name.trim() || "ZipShift client", phone: contactNeedsPhone(aorData.contactPreference || null) ? aorData.phone : null, situation: aorData.situation, needs: aorData.needs, consent: aorData.consent, providerId: selectedProvider?.record_id, handoff: aorHandoff, contactPreference: aorData.contactPreference || null, housingStatus: aorData.sdohConsent ? aorData.housingStatus || null : null, sdohConsent: aorData.sdohConsent && Boolean(aorData.housingStatus) }) });
       const text = await response.text();
-      let body: { error?: string } = {};
+      let body: { error?: string; referralId?: string } = {};
       try { body = text ? JSON.parse(text) : {}; } catch { body = {}; }
       if (!response.ok) throw new Error(body.error || "Unable to submit the referral.");
+      if (body.referralId) { setLastReferralCode(body.referralId); if (!sharedDevice) writeLocal(LOCAL_KEYS.lastReferral, body.referralId); }
       setAorSubmitted(true);
     } catch (error) {
       setAorSubmitError(error instanceof Error ? error.message : "Unable to submit the referral.");
@@ -665,8 +733,24 @@ export default function Home() {
     navigate("resource-detail");
   };
 
+  const shareProvider = async (p: Provider) => {
+    // Plain text works over SMS, on shared phones, and can be read aloud or written down.
+    const status = hoursDisplay(p, language);
+    const text = [p.org_name, p.address, p.phone ? `${language === "es" ? "Tel" : "Phone"}: ${p.phone}` : "", p.hours ? `${language === "es" ? "Horario" : "Hours"}: ${p.hours}` : status.word].filter(Boolean).join("\n");
+    sendFieldEvent("resource_share", p.record_id);
+    try {
+      if (navigator.share) { await navigator.share({ title: p.org_name, text }); setShareStatus(""); return; }
+      await navigator.clipboard.writeText(text);
+      setShareStatus(language === "es" ? "Copiado. Péguelo en un mensaje o anótelo." : "Copied. Paste it in a text or write it down.");
+      announce(language === "es" ? "Información copiada" : "Details copied");
+    } catch {
+      setShareStatus(language === "es" ? `Anote esto: ${text.replaceAll("\n", " · ")}` : `Write this down: ${text.replaceAll("\n", " · ")}`);
+    }
+  };
+
   const toggleSave = (id: string) => {
     const isSaved = savedProviders.includes(id);
+    if (!isSaved) sendFieldEvent("resource_save", id);
     setSavedProviders((prev) => isSaved ? prev.filter((x) => x !== id) : [...prev, id]);
     if (clientUser?.role === "client") {
       fetch(`/api/saved-resources/${id}`, { method: isSaved ? "DELETE" : "PUT", credentials: "include" }).catch(() => {
@@ -1013,10 +1097,19 @@ export default function Home() {
             <div style={{ fontSize: 14, color: subFg }}>{t.howCanWeHelp}</div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}><button onClick={() => setScreen("guided-entry")} style={{ display: "inline-flex", alignItems: "center", gap: 8, border: 0, borderRadius: 10, background: "var(--zs-color-brand)", color: "#fff", padding: "11px 14px", fontWeight: 900, fontSize: 12, cursor: "pointer" }}><Sparkles size={15} aria-hidden="true" />{language === "es" ? "Empezar aquí" : "Start here"}</button><button onClick={() => setQuickGuideOpen(true)} style={{ display: "inline-flex", alignItems: "center", gap: 8, border: "1px solid #b8d9d8", borderRadius: 10, background: cardBg, color: "#0f766e", padding: "10px 13px", fontWeight: 800, fontSize: 12, cursor: "pointer" }}><FileText size={15} aria-hidden="true" />{language === "es" ? "Guía rápida de recursos" : "Quick resource guide"}</button><button onClick={() => setLandingConsent("privacy")} style={{ display: "inline-flex", alignItems: "center", gap: 8, border: "1px solid #b8d9d8", borderRadius: 10, background: cardBg, color: "#0f766e", padding: "10px 13px", fontWeight: 800, fontSize: 12, cursor: "pointer" }}><ShieldCheck size={15} aria-hidden="true" />{language === "es" ? "Privacidad y consentimiento" : "Privacy & consent"}</button><button onClick={() => setLandingConsent("research")} style={{ display: "inline-flex", alignItems: "center", gap: 8, border: "1px solid #b8d9d8", borderRadius: 10, background: cardBg, color: "#0f766e", padding: "10px 13px", fontWeight: 800, fontSize: 12, cursor: "pointer" }}><ClipboardList size={15} aria-hidden="true" />{language === "es" ? "Consentimiento de investigación" : "Research consent"}</button></div>
           </div>
-          <section aria-labelledby="zipshift-promo-title" style={{ marginBottom: 20, overflow: "hidden", borderRadius: 16, background: "#142846", boxShadow: "0 14px 30px rgba(20,40,70,0.16)" }}>
+          {(() => {
+            const resume = !sharedDevice ? providers.find((provider) => provider.record_id === recentlyViewed[0]) : undefined;
+            if (!resume && !lastReferralCode) return null;
+            return <section aria-labelledby="zs-resume-title" style={{ marginBottom: 20, padding: "14px", border: `1px solid ${borderColor}`, borderRadius: 12, background: cardBg }}>
+              <h2 id="zs-resume-title" style={{ margin: "0 0 8px", fontSize: 15, fontWeight: 800, color: fg }}>{language === "es" ? "Continúe donde se quedó" : "Pick up where you left off"}</h2>
+              {resume && <button type="button" onClick={() => openProvider(resume)} style={{ display: "flex", width: "100%", minHeight: 48, alignItems: "center", justifyContent: "space-between", gap: 10, padding: "10px 12px", borderRadius: 10, border: `1px solid ${borderColor}`, background: bg, color: fg, fontSize: 15, fontWeight: 700, cursor: "pointer", textAlign: "left" }}><span>{resume.org_name}</span><span aria-hidden="true">›</span></button>}
+              {lastReferralCode && <p style={{ margin: resume ? "10px 0 0" : 0, fontSize: 14, color: fg }}>{language === "es" ? "Su código de referencia:" : "Your referral code:"} <strong style={{ fontFamily: "ui-monospace, monospace", letterSpacing: 0.5 }}>{lastReferralCode}</strong></p>}
+            </section>;
+          })()}
+          {lowData ? <p style={{ marginBottom: 20, fontSize: 13, color: subFg }}>{language === "es" ? "Modo de pocos datos activado: video e imágenes ocultos." : "Low-data mode is on: video and images are hidden."} <button type="button" onClick={() => setLowData(false)} style={{ border: "none", background: "none", color: "var(--zs-color-brand)", fontWeight: 700, cursor: "pointer", padding: 0, fontSize: 13 }}>{language === "es" ? "Mostrar" : "Show them"}</button></p> :           <section aria-labelledby="zipshift-promo-title" style={{ marginBottom: 20, overflow: "hidden", borderRadius: 16, background: "#142846", boxShadow: "0 14px 30px rgba(20,40,70,0.16)" }}>
             <video src={PROMO_VIDEO} controls muted playsInline preload="metadata" style={{ display: "block", width: "100%", aspectRatio: "16 / 9", objectFit: "cover" }} aria-label="ZipShift Navigator 30-second overview video" />
             <div style={{ padding: "12px 14px 14px", color: "#fff" }}><div id="zipshift-promo-title" style={{ fontWeight: 800, fontSize: 14 }}>{language === "es" ? "Conoce ZipShift Navigator" : "See ZipShift Navigator in action"}</div><div style={{ marginTop: 4, color: "#b8ece7", fontSize: 12 }}>{language === "es" ? "Recursos, acceso y coordinación en un solo lugar." : "Resources, access, and care coordination in one place."}</div></div>
-          </section>
+          </section>}
           {navigatorLoadError && <div role="status" style={{ marginBottom: 14, padding: "10px 12px", borderRadius: 9, background: darkMode ? "#163d42" : "#e3f5f3", color: darkMode ? "#b8ece7" : "#0f766e", fontSize: 12 }}>{navigatorLoadError}</div>}
           {/* Search bar */}
           <div style={{
@@ -1080,7 +1173,7 @@ export default function Home() {
           <div className="zipshift-nearby-list">
           {providers.slice(0, 4).map((p) => {
             const catId = getCategoryForProvider(p);
-            const status = getStatusLabel(p);
+            const status = hoursDisplay(p, language);
             return (
               <button key={p.record_id} onClick={() => openProvider(p)} style={{
                 display: "flex", alignItems: "center", gap: 12, width: "100%",
@@ -1091,17 +1184,14 @@ export default function Home() {
                   width: 44, height: 44, borderRadius: 10, flexShrink: 0,
                   background: getCategoryColor(catId) + "20",
                   display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, overflow: "hidden",
-                }}><img src={getProviderLogo(p)} alt="" onError={(event) => { event.currentTarget.style.display = "none"; }} style={{ width: "100%", height: "100%", objectFit: "contain", padding: 5 }} /><CategoryGlyph catId={catId} /></div>
+                }}>{!lowData && <img src={getProviderLogo(p)} alt="" onError={(event) => { event.currentTarget.style.display = "none"; }} style={{ width: "100%", height: "100%", objectFit: "contain", padding: 5 }} />}<CategoryGlyph catId={catId} /></div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 600, fontSize: 14, color: fg, marginBottom: 2 }}>
                     {p.org_name.length > 35 ? p.org_name.slice(0, 35) + "…" : p.org_name}
                   </div>
                   <div style={{ fontSize: 12, color: subFg }}>{getDistanceLabel(p)} · {p.service_category.split("/")[0].trim()}</div>
                   <div style={{ fontSize: 12, marginTop: 2 }}>
-                    <span style={{ color: status.open ? "#16a34a" : "#dc2626", fontWeight: 600 }}>
-                      {status.open ? t.open : t.closed}
-                    </span>
-                    {" · "}<span style={{ color: subFg }}>{status.label.replace("Open · ", "")}</span>
+                    <span style={{ color: status.color, fontWeight: 600 }}>{status.word}</span>{status.label ? <>{" · "}<span style={{ color: subFg }}>{status.label}</span></> : null}
                   </div>
                 </div>
                 <span style={{ color: subFg, fontSize: 18 }} aria-hidden="true">›</span>
@@ -1145,24 +1235,36 @@ export default function Home() {
           }}><SlidersHorizontal size={15} aria-hidden="true" /> {t.filters}{selectedCategories.length > 0 ? ` (${selectedCategories.length})` : ""}</button>
         </div>
         {/* Results count */}
+        <div role="group" aria-label={language === "es" ? "Filtros rápidos" : "Quick filters"} style={{ padding: "10px 16px 0", display: "flex", flexWrap: "wrap", gap: 8 }}>
+          {([
+            { label: language === "es" ? "Sin cita" : "Walk-ins OK", active: walkInOnly, toggle: () => setWalkInOnly((value) => !value) },
+            { label: language === "es" ? "No necesita ID" : "No ID needed", active: noIdOnly, toggle: () => setNoIdOnly((value) => !value) },
+            { label: language === "es" ? "Abierto ahora" : "Open now", active: openNow, toggle: () => setOpenNow((value) => !value) },
+          ]).map((chip) => <button key={chip.label} type="button" aria-pressed={chip.active} onClick={chip.toggle} style={{ minHeight: 44, padding: "8px 14px", borderRadius: 999, border: `2px solid ${chip.active ? "var(--zs-color-brand)" : borderColor}`, background: chip.active ? "var(--zs-color-brand)" : cardBg, color: chip.active ? "#fff" : fg, fontWeight: 700, fontSize: 14, cursor: "pointer" }}>{chip.active ? "✓ " : ""}{chip.label}</button>)}
+        </div>
         <div style={{ padding: "10px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <span role="status" aria-live="polite" style={{ fontSize: 13, color: subFg }}>{filteredProviders.length} {t.results}</span>
-          <button style={{ background: "none", border: "none", color: "var(--zs-color-brand)", fontSize: 13, cursor: "pointer", fontWeight: 600 }}>
-            {t.sort} ›
-          </button>
         </div>
+        {filteredProviders.length === 0 && <div style={{ margin: "8px 16px 16px", padding: "18px 16px", border: `1px solid ${borderColor}`, borderRadius: 12, background: cardBg }}>
+          <h2 style={{ margin: "0 0 6px", fontSize: 16, fontWeight: 800, color: fg }}>{language === "es" ? "No encontramos lugares con esos filtros" : "No places match these filters"}</h2>
+          <p style={{ margin: "0 0 12px", fontSize: 14, color: subFg, lineHeight: 1.5 }}>{language === "es" ? "Quite filtros para ver más, o llame al 211 para hablar con alguien." : "Clear filters to see more, or call 211 to talk to someone."}</p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            <button type="button" onClick={() => { setSearchQuery(""); setSelectedCategories([]); setMaxDistance(25); setOpenNow(false); setWalkInOnly(false); setNoIdOnly(false); setSelectedZip("all"); announce(language === "es" ? "Filtros borrados" : "Filters cleared"); }} style={{ minHeight: 44, padding: "10px 16px", borderRadius: 10, border: "none", background: "var(--zs-color-brand)", color: "#fff", fontWeight: 800, fontSize: 15, cursor: "pointer" }}>{language === "es" ? "Borrar filtros" : "Clear filters"}</button>
+            <a href="tel:211" style={{ minHeight: 44, display: "inline-flex", alignItems: "center", gap: 6, padding: "10px 16px", borderRadius: 10, border: "2px solid #15803d", color: "#15803d", fontWeight: 800, fontSize: 15, textDecoration: "none" }}><Phone size={16} aria-hidden="true" /> {language === "es" ? "Llamar al 211" : "Call 211"}</a>
+          </div>
+        </div>}
         {/* Provider list */}
         <div style={{ padding: "0 16px" }}>
           {filteredProviders.map((p) => {
             const catId = getCategoryForProvider(p);
-            const status = getStatusLabel(p);
+            const status = hoursDisplay(p, language);
             const isSaved = savedProviders.includes(p.record_id);
             return (
               <div key={p.record_id} style={{
                 display: "flex", alignItems: "center", gap: 12,
                 padding: "12px 0", borderBottom: `1px solid ${borderColor}`,
               }}>
-                <button onClick={() => openProvider(p)} style={{
+                <button type="button" data-result-card onClick={() => openProvider(p)} style={{
                   display: "flex", alignItems: "center", gap: 12, flex: 1,
                   background: "none", border: "none", cursor: "pointer", textAlign: "left", padding: 0,
                 }}>
@@ -1177,11 +1279,12 @@ export default function Home() {
                     </div>
                     <div style={{ fontSize: 12, color: subFg }}>{getDistanceLabel(p)} · {p.service_category.split("/")[0].trim()}</div>
                     <div style={{ fontSize: 12, marginTop: 2 }}>
-                      <span style={{ color: status.open ? "#16a34a" : "#dc2626", fontWeight: 600 }}>
-                        {status.open ? t.open : t.closed}
-                      </span>
-                      {" · "}<span style={{ color: subFg }}>{status.label.replace("Open · ", "")}</span>
+                      <span style={{ color: status.color, fontWeight: 600 }}>{status.word}</span>{status.label ? <>{" · "}<span style={{ color: subFg }}>{status.label}</span></> : null}
                     </div>
+                    {(acceptsWalkIns(p) || noIdRequired(p)) && <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 4 }}>
+                      {acceptsWalkIns(p) && <span style={{ borderRadius: 999, background: "#dcfce7", color: "#14532d", padding: "2px 8px", fontSize: 12, fontWeight: 700 }}>{language === "es" ? "Sin cita" : "Walk-ins OK"}</span>}
+                      {noIdRequired(p) && <span style={{ borderRadius: 999, background: "#dcfce7", color: "#14532d", padding: "2px 8px", fontSize: 12, fontWeight: 700 }}>{language === "es" ? "No necesita ID" : "No ID needed"}</span>}
+                    </div>}
                   </div>
                 </button>
                 <button onClick={() => toggleSave(p.record_id)} style={{
@@ -1250,7 +1353,7 @@ export default function Home() {
   if (screen === "resource-detail" && selectedProvider) {
     const p = selectedProvider;
     const catId = getCategoryForProvider(p);
-    const status = getStatusLabel(p);
+    const status = hoursDisplay(p, language);
     const isSaved = savedProviders.includes(p.record_id);
     return (
       <div style={{ background: bg, minHeight: "100vh", fontSize, color: fg, paddingBottom: 100 }}>
@@ -1270,11 +1373,13 @@ export default function Home() {
               width: 52, height: 52, borderRadius: 12, flexShrink: 0,
               background: getCategoryColor(catId) + "20",
               display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, overflow: "hidden",
-            }}><img src={getProviderLogo(p)} alt="" onError={(event) => { event.currentTarget.style.display = "none"; }} style={{ width: "100%", height: "100%", objectFit: "contain", padding: 5 }} /><CategoryGlyph catId={catId} /></div>
+            }}>{!lowData && <img src={getProviderLogo(p)} alt="" onError={(event) => { event.currentTarget.style.display = "none"; }} style={{ width: "100%", height: "100%", objectFit: "contain", padding: 5 }} />}<CategoryGlyph catId={catId} /></div>
             <div style={{ flex: 1 }}>
               <h2 style={{ fontSize: 18, fontWeight: 700, color: fg, margin: "0 0 4px" }}>{p.org_name}</h2>
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "#15803d", fontWeight: 600 }}><CheckCircle2 size={14} aria-hidden="true" /> {t.verified}</span>
+                {isVerified(p)
+                  ? <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "#15803d", fontWeight: 600 }}><CheckCircle2 size={14} aria-hidden="true" /> {t.verified}{p.verification_date ? ` · ${p.verification_date}` : ""}</span>
+                  : <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "#b45309", fontWeight: 600 }}><Info size={14} aria-hidden="true" /> {language === "es" ? "Sin verificar — llame para confirmar" : "Not yet verified — call to confirm"}</span>}
               </div>
               <div style={{ fontSize: 12, color: subFg, marginTop: 4 }}>
                 {p.address} · <span style={{ color: fg }}>{getDistanceLabel(p)}</span>
@@ -1282,20 +1387,23 @@ export default function Home() {
               <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 8 }}>
                 {p.language_access && <span style={{ borderRadius: 999, background: "#eef2ff", color: "#4338ca", padding: "4px 8px", fontSize: 11, fontWeight: 700 }}>{language === "es" ? `Idiomas: ${p.language_access}` : `Languages: ${p.language_access}`}</span>}
                 {p.ada_access && <span style={{ borderRadius: 999, background: "#fff7ed", color: "#9a3412", padding: "4px 8px", fontSize: 11, fontWeight: 700 }}>{language === "es" ? `Acceso: ${p.ada_access}` : `Access: ${p.ada_access}`}</span>}
+                {acceptsWalkIns(p) && <span style={{ borderRadius: 999, background: "#dcfce7", color: "#14532d", padding: "4px 8px", fontSize: 12, fontWeight: 800 }}>{language === "es" ? "Sin cita" : "Walk-ins OK"}</span>}
+                {noIdRequired(p) && <span style={{ borderRadius: 999, background: "#dcfce7", color: "#14532d", padding: "4px 8px", fontSize: 12, fontWeight: 800 }}>{language === "es" ? "No necesita ID" : "No ID needed"}</span>}
               </div>
             </div>
           </div>
           {/* Action buttons */}
-          <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 20 }}>
             {[
               { icon: Phone, label: language === "es" ? "Llamar" : "Call", action: () => { sendFieldEvent("resource_call", p.record_id); if (p.phone) window.open(`tel:${p.phone}`); } },
               { icon: Landmark, label: language === "es" ? "Sitio web" : "Website", action: () => { sendFieldEvent("resource_website", p.record_id); if (p.website) window.open(p.website.startsWith("http") ? p.website : `https://${p.website}`, "_blank"); } },
-              { icon: Navigation, label: t.directions, action: () => { sendFieldEvent("resource_directions", p.record_id); setDirectionsOpen((open) => !open); if (!userLocation && navigator.geolocation) { setLocationStatus("locating"); navigator.geolocation.getCurrentPosition((position) => { setUserLocation({ lat: position.coords.latitude, lng: position.coords.longitude }); setLocationStatus("ready"); }, () => setLocationStatus("denied"), { enableHighAccuracy: true, timeout: 8000, maximumAge: 300000 }); } } },
+              { icon: Navigation, label: t.directions, action: () => { sendFieldEvent("resource_directions", p.record_id, { lowData }); setDirectionsOpen((open) => !open); if (!userLocation && navigator.geolocation) { setLocationStatus("locating"); navigator.geolocation.getCurrentPosition((position) => { setUserLocation({ lat: position.coords.latitude, lng: position.coords.longitude }); setLocationStatus("ready"); }, () => setLocationStatus("denied"), { enableHighAccuracy: true, timeout: 8000, maximumAge: 300000 }); } } },
               { icon: ClipboardList, label: "Refer", action: () => navigate("referral-destination") },
+              { icon: Share2, label: language === "es" ? "Compartir" : "Share", action: () => void shareProvider(p) },
               { icon: Heart, label: "Save", action: () => toggleSave(p.record_id) },
             ].map((btn) => (
-              <button key={btn.label} onClick={btn.action} style={{
-                flex: 1, display: "flex", flexDirection: "column", alignItems: "center",
+              <button key={btn.label} type="button" onClick={btn.action} aria-pressed={btn.label === "Save" ? isSaved : undefined} style={{
+                flex: "1 1 72px", minHeight: 56, display: "flex", flexDirection: "column", alignItems: "center",
                 gap: 4, padding: "10px 4px", background: "var(--zs-color-brand)", color: "#fff",
                 border: "none", borderRadius: 10, cursor: "pointer", fontSize: 11, fontWeight: 600,
               }}>
@@ -1311,21 +1419,37 @@ export default function Home() {
             const origin = originLocation ? `${originLocation.lat},${originLocation.lng}` : "";
             const destinationText = `${destination.lat},${destination.lng}`;
             const routes = [
+              { label: language === "es" ? "Autobús" : "Bus / transit", href: `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(p.address || destinationText)}&travelmode=transit` },
+              { label: language === "es" ? "Caminando" : "Walking", href: `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(p.address || destinationText)}&travelmode=walking` },
               { label: "Google Maps", href: `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destinationText)}&travelmode=driving` },
               { label: "Apple Maps", href: `https://maps.apple.com/?${origin ? `saddr=${encodeURIComponent(origin)}&` : ""}daddr=${encodeURIComponent(destinationText)}&dirflg=d` },
               { label: "Waze", href: `https://www.waze.com/ul?ll=${encodeURIComponent(destinationText)}&navigate=yes` },
             ];
             return <div style={{ marginBottom: 20, padding: "12px 14px", background: cardBg, border: `1px solid ${borderColor}`, borderRadius: 12 }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}><div><div style={{ fontWeight: 800, fontSize: 13, color: fg }}>{estimate ? `${estimate.toFixed(1)} mi · ~${Math.max(1, Math.round(estimate / 30 * 60))} min drive` : locationStatus === "locating" ? "Finding your location…" : locationStatus === "geocoding" ? "Finding that address…" : locationStatus === "denied" ? "Location permission declined — enter a ZIP or address below" : locationStatus === "error" ? "We could not find that location — check the ZIP or address" : "Allow location or enter a ZIP/address for an estimate"}</div><div style={{ fontSize: 11, color: subFg, marginTop: 3 }}>Choose a routing app</div></div><button onClick={() => setDirectionsOpen(false)} style={{ border: 0, background: "transparent", color: subFg, cursor: "pointer", fontSize: 12 }}>Close</button></div><div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap", alignItems: "center" }}><input value={manualLocation} onChange={(event) => { setManualLocation(event.target.value); setManualCoordinates(null); setLocationStatus("idle"); }} placeholder="ZIP code or address" aria-label="ZIP code or address" style={{ flex: "1 1 210px", minWidth: 180, border: `1px solid ${borderColor}`, borderRadius: 8, padding: "9px 10px", background: "#fff", color: fg, fontSize: 12 }} /><button onClick={async () => { const query = manualLocation.trim(); if (!query) return; setLocationStatus("geocoding"); try { const response = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=us&q=${encodeURIComponent(query)}`); const results = await response.json() as Array<{ lat: string; lon: string }>; const match = results[0]; if (!match) throw new Error("not-found"); setManualCoordinates({ lat: Number(match.lat), lng: Number(match.lon) }); setUserLocation(null); setLocationStatus("ready"); } catch { setLocationStatus("error"); } }} style={{ border: `1px solid ${borderColor}`, borderRadius: 8, background: "#fff", color: "#0f766e", padding: "9px 12px", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>Use location</button></div><div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>{routes.map((route) => <button key={route.label} onClick={() => window.open(route.href, "_blank", "noopener,noreferrer")} style={{ flex: 1, minWidth: 100, border: `1px solid ${borderColor}`, borderRadius: 8, background: "#fff", color: "#0f766e", padding: "9px 8px", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>{route.label}</button>)}</div></div>;
           })()}
+          {shareStatus && <p role="status" style={{ margin: "-8px 0 14px", fontSize: 13, color: "#0f766e", fontWeight: 600 }}>{shareStatus}</p>}
+          {/* Next step: one clear action, so viewing a listing leads somewhere */}
+          <section aria-labelledby="zs-next-step" style={{ marginBottom: 20, padding: "14px", border: "2px solid #16a34a", borderRadius: 12, background: darkMode ? "#052e16" : "#f0fdf4" }}>
+            <h2 id="zs-next-step" style={{ margin: "0 0 6px", fontSize: 16, fontWeight: 800, color: fg }}>{language === "es" ? "Siguiente paso" : "Your next step"}</h2>
+            <p style={{ margin: "0 0 12px", fontSize: 14, color: fg, lineHeight: 1.5 }}>
+              {status.state === "unknown" || !isVerified(p)
+                ? (language === "es" ? "Llame primero para confirmar que están abiertos y que pueden ayudarle hoy." : "Call first to check they're open and can help you today.")
+                : status.state === "closed"
+                  ? (language === "es" ? "Están cerrados ahora. Guarde este lugar o prepárese para ir cuando abran." : "They're closed right now. Save this place or get ready to go when they open.")
+                  : (language === "es" ? "Están abiertos. Revise qué llevar y vaya." : "They're open. Check what to bring, then go.")}
+            </p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              {p.phone && <a href={`tel:${p.phone}`} onClick={() => sendFieldEvent("resource_call", p.record_id)} style={{ flex: "1 1 160px", display: "inline-flex", justifyContent: "center", alignItems: "center", gap: 6, minHeight: 48, padding: "12px 14px", borderRadius: 10, background: status.state === "open" && isVerified(p) ? "transparent" : "#15803d", color: status.state === "open" && isVerified(p) ? "#15803d" : "#fff", border: "2px solid #15803d", fontWeight: 800, fontSize: 16, textDecoration: "none" }}><Phone size={18} aria-hidden="true" /> {language === "es" ? `Llamar ${p.phone}` : `Call ${p.phone}`}</a>}
+              <button type="button" onClick={() => { sendFieldEvent("before_you_go_open", p.record_id); navigate("before-you-go"); }} style={{ flex: "1 1 160px", minHeight: 48, padding: "12px 14px", borderRadius: 10, background: status.state === "open" && isVerified(p) ? "#15803d" : "transparent", color: status.state === "open" && isVerified(p) ? "#fff" : "#15803d", border: "2px solid #15803d", fontWeight: 800, fontSize: 16, cursor: "pointer" }}>{t.iNeedThisHelp}</button>
+            </div>
+          </section>
           {/* Hours */}
           <div style={{ marginBottom: 16, padding: "12px 14px", background: cardBg, borderRadius: 10 }}>
             <div style={{ fontWeight: 700, fontSize: 12, color: subFg, letterSpacing: 0.5, marginBottom: 8 }}>{t.hours}</div>
-            <div style={{ fontSize: 14, color: fg }}>{p.hours || "Mon – Fri: 8:00 AM – 5:00 PM"}</div>
+            <div style={{ fontSize: 14, color: fg }}>{p.hours || (language === "es" ? "Horario no publicado — llame antes de ir" : "Hours not listed — call before you go")}</div>
             <div style={{ marginTop: 6, fontSize: 13 }}>
-              <span style={{ color: status.open ? "#16a34a" : "#dc2626", fontWeight: 600 }}>
-                {status.open ? t.open : t.closed}
-              </span>
-              {status.open && <span style={{ color: subFg }}> · Closes 5:00 PM</span>}
+              <span style={{ color: status.color, fontWeight: 700 }}>{status.word}</span>
+              {status.state === "open" && <span style={{ color: subFg }}> · {status.label}</span>}
             </div>
           </div>
           {/* Services */}
@@ -1363,15 +1487,6 @@ export default function Home() {
               {p.language_access && <div style={{ fontSize: 13, color: fg, marginBottom: 4 }}>{language === "es" ? `Idiomas: ${p.language_access}` : `Languages: ${p.language_access}`}</div>}
             </div>
           )}
-          {/* CTAs */}
-          <button onClick={() => navigate("before-you-go")} style={{
-            width: "100%", padding: "14px 0", background: "#16a34a", color: "#fff",
-            border: "none", borderRadius: 10, fontWeight: 700, fontSize: 16, cursor: "pointer", marginBottom: 12,
-          }}>{t.iNeedThisHelp}</button>
-          <button onClick={() => p.phone && window.open(`tel:${p.phone}`)} style={{
-            width: "100%", padding: "14px 0", background: "transparent", color: "#15803d",
-            border: "2px solid #16a34a", borderRadius: 10, fontWeight: 700, fontSize: 16, cursor: "pointer",
-          }}><Phone size={17} strokeWidth={1.8} aria-hidden="true" /> {t.callToConfirm}</button>
         </div>
         </main>
         <RenderSlot render={BottomNav} />
@@ -1400,67 +1515,58 @@ export default function Home() {
 
   // ─── BEFORE YOU GO ────────────────────────────────────────────────────────
   if (screen === "before-you-go") {
+    const p = selectedProvider;
+    const es = language === "es";
+    const bring = p ? documentsToBring(p) : [];
+    const idOptional = p ? noIdRequired(p) : false;
+    const alternatives = (p?.document_alternatives || []).filter(Boolean);
+    const status = p ? hoursDisplay(p, language) : null;
+    // Only what this provider lists, plus optional items that speed things up.
     const checklistItems = [
-      { key: "photoId", label: "Photo ID (if available)", desc: "Any government-issued ID" },
-      { key: "mediCal", label: "Medi-Cal card", desc: "Helps speed up services" },
-      { key: "proofHomeless", label: "Proof of homelessness / housing instability", desc: "Not required, but may help" },
-      { key: "referralPaper", label: "Referral paperwork (if provided)", desc: "Bring any documents you have" },
-      { key: "caseManager", label: "Case manager contact (name & phone)", desc: "If you have one" },
+      ...bring.map((item) => ({ key: `doc:${item}`, label: item, desc: es ? "Lo pide este lugar" : "This place asks for it" })),
+      { key: "opt:medi-cal", label: es ? "Tarjeta de Medi-Cal (si tiene)" : "Medi-Cal card (if you have one)", desc: es ? "Opcional — puede acelerar el servicio" : "Optional — can speed things up" },
+      { key: "opt:case-manager", label: es ? "Contacto de su administrador de caso (si tiene)" : "Case manager's name and phone (if you have one)", desc: es ? "Opcional" : "Optional" },
     ];
     const whatToCheck = [
-      { key: "hoursConfirmed", label: "Hours of operation", desc: "Confirm today's hours" },
-      { key: "walkIn", label: "Walk-in availability", desc: "Call ahead to confirm" },
-      { key: "transitPlanned", label: "Transit access", desc: "Plan your route" },
-      { key: "language", label: "Language access", desc: "Ask about interpretation" },
+      ...(status?.state !== "open" ? [{ key: "chk:hours", label: es ? "Llame para confirmar el horario de hoy" : "Call to confirm today's hours", desc: p?.hours || (es ? "Horario no publicado" : "Hours not listed") }] : []),
+      ...(p && !acceptsWalkIns(p) ? [{ key: "chk:walkin", label: es ? "Pregunte si aceptan personas sin cita" : "Ask if you can walk in", desc: es ? "No sabemos si aceptan sin cita" : "We don't know if they take walk-ins" }] : []),
+      { key: "chk:route", label: es ? "Planee cómo llegar" : "Plan how to get there", desc: es ? "Autobús, a pie o con alguien" : "Bus, walking, or a ride" },
     ];
+    const box = (item: { key: string; label: string; desc: string }) => (
+      <label key={item.key} style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 14, cursor: "pointer" }}>
+        <input type="checkbox" checked={Boolean(checklist[item.key])} onChange={() => setChecklist((prev) => ({ ...prev, [item.key]: !prev[item.key] }))} style={{ width: 22, height: 22, marginTop: 1, accentColor: "var(--zs-color-brand)", flexShrink: 0 }} />
+        <div>
+          <div style={{ fontSize: 15, fontWeight: 600, color: fg }}>{item.label}</div>
+          <div style={{ fontSize: 13, color: subFg, marginTop: 2 }}>{item.desc}</div>
+        </div>
+      </label>
+    );
     return (
       <div style={{ background: bg, minHeight: "100vh", fontSize, color: fg, paddingBottom: 100 }}>
         <RenderSlot render={HamburgerMenu} />
         <RenderSlot render={Header} title={<span style={{ fontWeight: 700, fontSize: 16, color: fg }}>{t.beforeYouGo}</span>} showBack />
         <main id="main-content" key={screen} tabIndex={-1} className="zs-screen">
-        {selectedProvider && <Breadcrumbs style={{ padding: "10px 16px 0" }} items={[{ label: t.home, onSelect: () => navigate("home") }, { label: selectedProvider.org_name, onSelect: () => navigate("resource-detail") }, { label: t.beforeYouGo }]} />}
+        {p && <Breadcrumbs style={{ padding: "10px 16px 0" }} items={[{ label: t.home, onSelect: () => navigate("home") }, { label: p.org_name, onSelect: () => navigate("resource-detail") }, { label: t.beforeYouGo }]} />}
         <div style={{ padding: "16px" }}>
-          <p style={{ color: subFg, fontSize: 13, marginBottom: 20, lineHeight: 1.5 }}>{t.beforeYouGoSubtitle}</p>
-          <div style={{ fontWeight: 700, fontSize: 12, color: subFg, letterSpacing: 0.5, marginBottom: 12 }}>{t.checklist}</div>
-          {checklistItems.map((item) => (
-            <label key={item.key} style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 14, cursor: "pointer" }}>
-              <input type="checkbox"
-                checked={checklist[item.key as keyof typeof checklist]}
-                onChange={() => setChecklist((prev) => ({ ...prev, [item.key]: !prev[item.key as keyof typeof checklist] }))}
-                style={{ width: 20, height: 20, marginTop: 2, accentColor: "var(--zs-color-brand)", flexShrink: 0 }} />
-              <div>
-                <div style={{ fontSize: 14, fontWeight: 500, color: fg }}>{item.label}</div>
-                <div style={{ fontSize: 12, color: subFg, marginTop: 2 }}>{item.desc}</div>
-              </div>
-            </label>
-          ))}
-          <div style={{ fontWeight: 700, fontSize: 12, color: subFg, letterSpacing: 0.5, marginTop: 20, marginBottom: 12 }}>{t.whatToCheck}</div>
-          {whatToCheck.map((item) => (
-            <label key={item.key} style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 14, cursor: "pointer" }}>
-              <input type="checkbox"
-                checked={checklist[item.key as keyof typeof checklist]}
-                onChange={() => setChecklist((prev) => ({ ...prev, [item.key]: !prev[item.key as keyof typeof checklist] }))}
-                style={{ width: 20, height: 20, marginTop: 2, accentColor: "var(--zs-color-brand)", flexShrink: 0 }} />
-              <div>
-                <div style={{ fontSize: 14, fontWeight: 500, color: fg }}>{item.label}</div>
-                <div style={{ fontSize: 12, color: subFg, marginTop: 2 }}>{item.desc}</div>
-              </div>
-            </label>
-          ))}
-          {selectedProvider && (
-            <div style={{ padding: "12px 14px", background: "#f0fdf4", borderRadius: 10, marginTop: 8, marginBottom: 20 }}>
-              <div style={{ fontSize: 12, color: subFg, marginBottom: 4 }}>Check Hours</div>
-              <div style={{ fontSize: 14, color: "#15803d", fontWeight: 600 }}>Open now · Closes 5:00 PM</div>
-            </div>
-          )}
-          <button onClick={() => navigate("directions")} style={{
-            width: "100%", padding: "16px 0", background: "var(--zs-color-brand)", color: "#fff",
+          {p && <div style={{ padding: "12px 14px", background: cardBg, border: `1px solid ${borderColor}`, borderRadius: 10, marginBottom: 16 }}>
+            <div style={{ fontWeight: 800, fontSize: 16, color: fg }}>{p.org_name}</div>
+            <div style={{ fontSize: 14, color: fg, marginTop: 4 }}>{p.address}</div>
+            {status && <div style={{ fontSize: 14, marginTop: 6 }}><span style={{ color: status.color, fontWeight: 700 }}>{status.word}</span>{status.state === "open" && <span style={{ color: subFg }}> · {status.label}</span>}</div>}
+          </div>}
+          {idOptional && <div role="note" style={{ padding: "12px 14px", borderRadius: 10, background: darkMode ? "#052e16" : "#dcfce7", color: darkMode ? "#bbf7d0" : "#14532d", fontWeight: 700, fontSize: 15, marginBottom: 16 }}>{es ? "Puede ir aunque no tenga identificación." : "You can go even if you don't have ID."}</div>}
+          <h2 style={{ fontWeight: 700, fontSize: 13, color: subFg, letterSpacing: 0.5, margin: "0 0 12px" }}>{t.checklist}</h2>
+          {checklistItems.map(box)}
+          {!idOptional && alternatives.length > 0 && <div style={{ padding: "12px 14px", borderRadius: 10, border: `1px solid ${borderColor}`, marginBottom: 16 }}>
+            <div style={{ fontWeight: 700, fontSize: 14, color: fg, marginBottom: 6 }}>{es ? "¿No tiene ID o documentos? Pregunte:" : "No ID or papers? Ask about:"}</div>
+            <ul style={{ margin: 0, paddingLeft: 18, fontSize: 14, color: fg, lineHeight: 1.6 }}>{alternatives.map((item) => <li key={item}>{item}</li>)}</ul>
+          </div>}
+          <h2 style={{ fontWeight: 700, fontSize: 13, color: subFg, letterSpacing: 0.5, margin: "20px 0 12px" }}>{t.whatToCheck}</h2>
+          {whatToCheck.map(box)}
+          {p?.phone && <a href={`tel:${p.phone}`} onClick={() => sendFieldEvent("resource_call", p.record_id, { from: "before-you-go" })} style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 8, width: "100%", minHeight: 52, boxSizing: "border-box", padding: "14px 0", background: status?.state === "open" ? "transparent" : "#15803d", color: status?.state === "open" ? "#15803d" : "#fff", border: "2px solid #15803d", borderRadius: 10, fontWeight: 800, fontSize: 16, textDecoration: "none", marginBottom: 12 }}><Phone size={18} aria-hidden="true" /> {es ? `Llamar ${p.phone}` : `Call ${p.phone}`}</a>}
+          <button type="button" onClick={() => navigate("directions")} style={{
+            width: "100%", minHeight: 52, padding: "16px 0", background: "var(--zs-color-brand)", color: "#fff",
             border: "none", borderRadius: 10, fontWeight: 700, fontSize: 16, cursor: "pointer", marginBottom: 12,
           }}>{t.iReadyToGo}</button>
-          <button onClick={() => selectedProvider && window.open(`tel:${selectedProvider.phone}`)} style={{
-            width: "100%", padding: "14px 0", background: "transparent", color: "#15803d",
-            border: "2px solid #16a34a", borderRadius: 10, fontWeight: 700, fontSize: 16, cursor: "pointer",
-          }}><Phone size={17} strokeWidth={1.8} aria-hidden="true" /> {t.callToConfirm}</button>
         </div>
         </main>
         <RenderSlot render={BottomNav} />
@@ -1471,103 +1577,56 @@ export default function Home() {
   // ─── DIRECTIONS ───────────────────────────────────────────────────────────
   if (screen === "directions") {
     const p = selectedProvider;
+    const es = language === "es";
+    const destination = p ? (p.address || `${p.lat},${p.lng}`) : "";
+    // Hand off to a real routing app. The previous screen showed the same
+    // made-up bus route and times for every provider.
     const modes = [
-      { id: "drive", icon: Landmark, label: "Drive", time: "18 min", detail: "6.2 mi" },
-      { id: "transit", icon: BusFront, label: "Transit", time: "24 min", detail: "Route 6" },
-      { id: "walk", icon: Navigation, label: "Walk", time: "42 min", detail: "1.8 mi" },
-      { id: "bike", icon: Activity, label: "Bike", time: "12 min", detail: "1.8 mi" },
+      { id: "transit", icon: BusFront, label: es ? "Autobús" : "Bus", mode: "transit" },
+      { id: "walk", icon: Navigation, label: es ? "Caminar" : "Walk", mode: "walking" },
+      { id: "drive", icon: Landmark, label: es ? "Auto" : "Car", mode: "driving" },
+      { id: "bike", icon: Activity, label: es ? "Bicicleta" : "Bike", mode: "bicycling" },
     ] as const;
-    const transitSteps = [
-      { icon: Navigation, color: "#6b7280", step: "Walk to Sisk Rd & Standiford Ave", detail: "0.4 mi · 8 min" },
-      { icon: BusFront, color: "var(--zs-color-brand)", step: "Board Route 6 (Turlock)", detail: "Sisk Rd & Standiford Ave · 9:48 AM" },
-      { icon: BusFront, color: "var(--zs-color-brand)", step: "Ride 12 stops (24 min)", detail: "Stay on until 9th St & I St" },
-      { icon: Navigation, color: "#6b7280", step: "Walk to destination", detail: "0.2 mi · 3 min" },
-      { icon: MapPin, color: "#15803d", step: p ? (p.org_name.length > 35 ? p.org_name.slice(0, 35) + "…" : p.org_name) : "Destination", detail: p ? p.address : "" },
-    ];
-    const driveSteps = [
-      { icon: Landmark, color: "var(--zs-color-brand)", step: "Head south on your street", detail: "0.3 mi" },
-      { icon: ArrowRight, color: "#6b7280", step: "Turn right onto Standiford Ave", detail: "1.2 mi" },
-      { icon: ArrowLeft, color: "#6b7280", step: "Turn left onto 9th St", detail: "0.8 mi" },
-      { icon: MapPin, color: "#15803d", step: p ? (p.org_name.length > 35 ? p.org_name.slice(0, 35) + "…" : p.org_name) : "Destination", detail: p ? p.address : "" },
-    ];
-    const steps = dirMode === "transit" ? transitSteps : driveSteps;
-    const selectedMode = modes.find((m) => m.id === dirMode) || modes[1];
+    const openRoute = (mode: string) => {
+      if (!p) return;
+      sendFieldEvent("directions_handoff", p.record_id, { mode });
+      window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}&travelmode=${mode}`, "_blank", "noopener,noreferrer");
+    };
+    const status = p ? hoursDisplay(p, language) : null;
     return (
       <div style={{ background: bg, minHeight: "100vh", fontSize, color: fg, paddingBottom: 100 }}>
         <RenderSlot render={HamburgerMenu} />
         <RenderSlot render={Header} title={<span style={{ fontWeight: 700, fontSize: 16, color: fg }}>{t.directions}</span>} showBack />
         <main id="main-content" key={screen} tabIndex={-1} className="zs-screen">
-        {selectedProvider && <Breadcrumbs style={{ padding: "10px 16px 0" }} items={[{ label: t.home, onSelect: () => navigate("home") }, { label: selectedProvider.org_name, onSelect: () => navigate("resource-detail") }, { label: t.directions }]} />}
+        {p && <Breadcrumbs style={{ padding: "10px 16px 0" }} items={[{ label: t.home, onSelect: () => navigate("home") }, { label: p.org_name, onSelect: () => navigate("resource-detail") }, { label: t.directions }]} />}
         <div style={{ padding: "16px" }}>
-          {/* From/To */}
-          <div style={{ background: cardBg, border: `1px solid ${borderColor}`, borderRadius: 12, padding: "14px", marginBottom: 16 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-              <div style={{ width: 12, height: 12, borderRadius: "50%", background: "var(--zs-color-brand)", flexShrink: 0 }} />
-              <span style={{ fontSize: 14, color: subFg }}>From</span>
-              <span style={{ fontSize: 14, color: fg, fontWeight: 500 }}>{t.yourLocation}</span>
+          {!p ? <p style={{ fontSize: 15, color: fg }}>{es ? "Elija un lugar primero." : "Choose a place first."}</p> : <>
+          <section aria-labelledby="zs-destination" style={{ background: cardBg, border: `1px solid ${borderColor}`, borderRadius: 12, padding: "16px", marginBottom: 16 }}>
+            <h2 id="zs-destination" style={{ margin: 0, fontSize: 13, color: subFg, fontWeight: 700, letterSpacing: 0.5 }}>{es ? "VAYA A" : "GO TO"}</h2>
+            <div style={{ fontSize: 18, fontWeight: 800, color: fg, marginTop: 6 }}>{p.org_name}</div>
+            <div style={{ fontSize: 20, fontWeight: 700, color: fg, marginTop: 4, lineHeight: 1.35 }}>{p.address}</div>
+            {status && <div style={{ fontSize: 14, marginTop: 8 }}><span style={{ color: status.color, fontWeight: 700 }}>{status.word}</span>{status.state === "open" && <span style={{ color: subFg }}> · {status.label}</span>}</div>}
+            <p style={{ margin: "10px 0 0", fontSize: 13, color: subFg }}>{es ? "Puede mostrarle esta dirección al chofer del autobús." : "You can show this address to the bus driver."}</p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
+              <button type="button" onClick={async () => { try { await navigator.clipboard.writeText(`${p.org_name}, ${p.address}`); setShareStatus(es ? "Dirección copiada." : "Address copied."); announce(es ? "Dirección copiada" : "Address copied"); } catch { setShareStatus(es ? `Anote: ${p.address}` : `Write down: ${p.address}`); } }} style={{ flex: "1 1 140px", minHeight: 44, border: `1px solid ${borderColor}`, borderRadius: 8, background: bg, color: fg, fontWeight: 700, fontSize: 14, cursor: "pointer" }}>{es ? "Copiar dirección" : "Copy address"}</button>
+              {p.phone && <a href={`tel:${p.phone}`} onClick={() => sendFieldEvent("resource_call", p.record_id, { from: "directions" })} style={{ flex: "1 1 140px", minHeight: 44, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, border: "2px solid #15803d", borderRadius: 8, color: "#15803d", fontWeight: 800, fontSize: 14, textDecoration: "none" }}><Phone size={16} aria-hidden="true" /> {es ? "Llamar" : "Call"}</a>}
             </div>
-            <div style={{ width: 2, height: 16, background: borderColor, marginLeft: 5, marginBottom: 10 }} />
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{ width: 12, height: 12, borderRadius: "50%", background: "#16a34a", flexShrink: 0 }} />
-              <span style={{ fontSize: 14, color: subFg }}>To</span>
-              <span style={{ fontSize: 14, color: fg, fontWeight: 500 }}>
-                {p ? (p.org_name.length > 30 ? p.org_name.slice(0, 30) + "…" : p.org_name) : "Destination"}
-              </span>
-            </div>
-          </div>
-          {/* Mode tabs */}
-          <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+            {shareStatus && <p role="status" style={{ margin: "8px 0 0", fontSize: 13, color: "#0f766e", fontWeight: 600 }}>{shareStatus}</p>}
+          </section>
+          <h2 style={{ fontWeight: 700, fontSize: 13, color: subFg, letterSpacing: 0.5, margin: "0 0 10px" }}>{es ? "ABRIR RUTA EN GOOGLE MAPS" : "OPEN A ROUTE IN GOOGLE MAPS"}</h2>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8, marginBottom: 12 }}>
             {modes.map((mode) => (
-              <button key={mode.id} onClick={() => setDirMode(mode.id)} style={{
-                flex: 1, padding: "8px 4px", display: "flex", flexDirection: "column",
-                alignItems: "center", gap: 2, borderRadius: 8,
-                background: dirMode === mode.id ? "var(--zs-color-brand)" : cardBg,
-                border: `1px solid ${dirMode === mode.id ? "var(--zs-color-brand)" : borderColor}`,
-                color: dirMode === mode.id ? "#fff" : fg, cursor: "pointer", fontSize: 11,
-              }}>
-                <mode.icon size={18} strokeWidth={1.8} aria-hidden="true" />
-                {mode.label}
+              <button key={mode.id} type="button" onClick={() => openRoute(mode.mode)} style={{ minHeight: 56, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, borderRadius: 10, background: mode.id === "transit" ? "var(--zs-color-brand)" : cardBg, border: `1px solid ${mode.id === "transit" ? "var(--zs-color-brand)" : borderColor}`, color: mode.id === "transit" ? "#fff" : fg, cursor: "pointer", fontSize: 16, fontWeight: 700 }}>
+                <mode.icon size={20} strokeWidth={1.8} aria-hidden="true" />{mode.label}
               </button>
             ))}
           </div>
-          {/* Time summary */}
-          <div style={{
-            background: "#eff6ff", borderRadius: 12, padding: "14px", marginBottom: 16,
-            display: "flex", justifyContent: "space-between", alignItems: "center",
-          }}>
-            <div>
-              <div style={{ fontWeight: 700, fontSize: 22, color: "var(--zs-color-brand)" }}>{selectedMode.time}</div>
-              <div style={{ fontSize: 13, color: subFg }}>{selectedMode.detail}</div>
-            </div>
-            {dirMode === "transit" && (
-              <div style={{ padding: "4px 10px", background: "#dcfce7", color: "#15803d", borderRadius: 20, fontSize: 12, fontWeight: 600 }}>
-                <><Accessibility size={15} aria-hidden="true" /> Accessible</>
-              </div>
-            )}
-          </div>
-          {/* Step by step */}
-          <div style={{ fontWeight: 700, fontSize: 12, color: subFg, letterSpacing: 0.5, marginBottom: 12 }}>
-            {t.recommendedRoute}
-          </div>
-          {steps.map((step, i) => (
-            <div key={i} style={{ display: "flex", gap: 12, marginBottom: 12 }}>
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-                <div style={{
-                  width: 32, height: 32, borderRadius: "50%", background: step.color + "20",
-                  display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, flexShrink: 0,
-                }}><step.icon size={16} strokeWidth={1.8} aria-hidden="true" /></div>
-                {i < steps.length - 1 && <div style={{ width: 2, flex: 1, background: borderColor, minHeight: 20, marginTop: 4 }} />}
-              </div>
-              <div style={{ paddingTop: 6 }}>
-                <div style={{ fontSize: 14, fontWeight: 500, color: fg }}>{step.step}</div>
-                <div style={{ fontSize: 12, color: subFg, marginTop: 2 }}>{step.detail}</div>
-              </div>
-            </div>
-          ))}
-          <button onClick={() => navigate("map")} style={{
-            width: "100%", padding: "14px 0", background: cardBg, color: "var(--zs-color-brand)",
-            border: "2px solid var(--zs-color-brand)", borderRadius: 10, fontWeight: 700, fontSize: 15, cursor: "pointer", marginTop: 8,
-          }}><Map size={17} strokeWidth={1.8} aria-hidden="true" /> {t.viewOnMap}</button>
+          <p style={{ fontSize: 12, color: subFg, margin: "0 0 16px" }}>{es ? "Se abre en una página nueva. Los horarios de autobús vienen de Google Maps." : "Opens in a new page. Bus times come from Google Maps."}</p>
+          {!lowData && <button type="button" onClick={() => navigate("map")} style={{
+            width: "100%", minHeight: 48, padding: "14px 0", background: cardBg, color: "var(--zs-color-brand)",
+            border: "2px solid var(--zs-color-brand)", borderRadius: 10, fontWeight: 700, fontSize: 15, cursor: "pointer",
+          }}><Map size={17} strokeWidth={1.8} aria-hidden="true" /> {t.viewOnMap}</button>}
+          </>}
         </div>
         </main>
         <RenderSlot render={BottomNav} />
@@ -1612,7 +1671,7 @@ export default function Home() {
           ) : (
             displayList.map((p) => {
               const catId = getCategoryForProvider(p);
-              const status = getStatusLabel(p);
+              const status = hoursDisplay(p, language);
               return (
                 <button key={p.record_id} onClick={() => openProvider(p)} style={{
                   display: "flex", alignItems: "center", gap: 12, width: "100%",
@@ -1630,10 +1689,7 @@ export default function Home() {
                     </div>
                     <div style={{ fontSize: 12, color: subFg }}>{getDistanceLabel(p)} · {p.service_category.split("/")[0].trim()}</div>
                     <div style={{ fontSize: 12, marginTop: 2 }}>
-                      <span style={{ color: status.open ? "#16a34a" : "#dc2626", fontWeight: 600 }}>
-                        {status.open ? t.open : t.closed}
-                      </span>
-                      <span style={{ color: subFg }}> · Closes 5:00 PM</span>
+                      <span style={{ color: status.color, fontWeight: 600 }}>{status.word}</span>{status.label ? <>{" · "}<span style={{ color: subFg }}>{status.label}</span></> : null}
                     </div>
                   </div>
                   <Heart size={20} color="#dc2626" fill="currentColor" aria-hidden="true" />
@@ -1657,18 +1713,6 @@ export default function Home() {
         <RenderSlot render={Header} title={<img onError={(event) => { event.currentTarget.style.display = "none"; }} src={AOR_LOGO} alt="AOR" style={{ height: 32 }} />} />
         <main id="main-content" key={screen} tabIndex={-1} className="zs-screen">
         <div style={{ padding: "16px" }}>
-          {/* Admin & Researcher Access */}
-          <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-            <button onClick={() => navigate("admin-dashboard")} style={{
-              flex: 1, padding: "10px 12px", background: "#1e40af", color: "#fff",
-              border: "none", borderRadius: 8, fontWeight: 600, fontSize: 12, cursor: "pointer",
-            }}><UserCircle size={16} strokeWidth={1.8} aria-hidden="true" /> Admin</button>
-            <button onClick={() => navigate("researcher-analytics")} style={{
-              flex: 1, padding: "10px 12px", background: "#059669", color: "#fff",
-              border: "none", borderRadius: 8, fontWeight: 600, fontSize: 12, cursor: "pointer",
-            }}><Activity size={16} strokeWidth={1.8} aria-hidden="true" /> Researcher</button>
-          </div>
-
           {/* AOR Banner */}
           <div style={{
             background: "#d97706", borderRadius: 14, padding: "16px", marginBottom: 20,
@@ -1684,15 +1728,25 @@ export default function Home() {
           {aorSubmitted ? (
               <div style={{ textAlign: "center", padding: "40px 20px" }}>
               <div style={{ width: 66, height: 66, display: "grid", placeItems: "center", margin: "0 auto 16px", borderRadius: "50%", background: "#e3f5f3", color: "#0f766e" }}><CheckCircle2 size={38} strokeWidth={1.8} aria-hidden="true" /></div>
-              <div style={{ fontWeight: 700, fontSize: 20, color: fg, marginBottom: 8 }}>Referral Submitted!</div>
-              <div style={{ fontSize: 14, color: subFg, marginBottom: 24 }}>
-                Your information has been securely submitted. A case coordinator will follow up within 1-2 business days.
+              <div style={{ fontWeight: 700, fontSize: 20, color: fg, marginBottom: 8 }}>{language === "es" ? "¡Solicitud enviada!" : "Referral sent!"}</div>
+              {lastReferralCode && <div style={{ margin: "0 auto 16px", maxWidth: 360, padding: "14px", border: `2px dashed ${borderColor}`, borderRadius: 12 }}>
+                <div style={{ fontSize: 13, color: subFg }}>{language === "es" ? "Su código de referencia — anótelo o tome una foto" : "Your referral code — write it down or take a photo"}</div>
+                <div style={{ marginTop: 6, fontSize: 24, fontWeight: 900, letterSpacing: 1, color: fg, fontFamily: "ui-monospace, monospace" }}>{lastReferralCode}</div>
+              </div>}
+              <div style={{ fontSize: 14, color: subFg, marginBottom: 24, lineHeight: 1.6, maxWidth: 420, marginInline: "auto" }}>
+                {aorData.contactPreference === "check_back_with_code"
+                  ? (language === "es" ? "Sin teléfono está bien. Muestre este código en cualquier oficina asociada o en un refugio, y el personal podrá ver su solicitud." : "No phone is fine. Show this code at any partner office or shelter and staff can look up your request.")
+                  : aorData.contactPreference === "case_manager"
+                    ? (language === "es" ? "Nos comunicaremos por medio de su administrador de caso o el personal del refugio en 1 a 2 días hábiles." : "We'll reach you through your case manager or shelter staff within 1–2 business days.")
+                    : aorData.contactPreference === "shared_phone_no_details"
+                      ? (language === "es" ? "Le llamaremos en 1 a 2 días hábiles y no dejaremos detalles en mensajes." : "We'll call within 1–2 business days and won't leave details in messages.")
+                      : (language === "es" ? "Un coordinador le contactará en 1 a 2 días hábiles." : "A coordinator will contact you within 1–2 business days.")}
               </div>
-              <button onClick={() => { setAorSubmitted(false); setAorStep(0); setAorData({ name: "", dob: "", phone: "", situation: "", needs: [], consent: false }); setAorHandoff(null); navigate("home"); }}
+              <button onClick={() => { setAorSubmitted(false); setAorStep(0); setAorData({ name: "", phone: "", situation: "", needs: [], consent: false, contactPreference: "", housingStatus: "", sdohConsent: false }); setAorHandoff(null); navigate("home"); }}
                 style={{
                   padding: "14px 32px", background: "var(--zs-color-brand)", color: "#fff",
                   border: "none", borderRadius: 10, fontWeight: 700, fontSize: 15, cursor: "pointer",
-                }}>Return Home</button>
+                }}>{language === "es" ? "Volver al inicio" : "Return Home"}</button>
             </div>
           ) : (
             <>
@@ -1747,25 +1801,30 @@ export default function Home() {
 
               {aorStep === 1 && (
                 <div>
-                  <div style={{ fontWeight: 700, fontSize: 17, color: fg, marginBottom: 6 }}>Your Contact Information</div>
-                  <div style={{ fontSize: 13, color: subFg, marginBottom: 16 }}>This helps us connect you with the right resources</div>
-                  {[
-                    { label: "Full Name", key: "name", placeholder: "Your name", type: "text" },
-                    { label: "Date of Birth", key: "dob", placeholder: "MM/DD/YYYY", type: "text" },
-                    { label: "Phone Number", key: "phone", placeholder: "(555) 000-0000", type: "tel" },
-                  ].map((field) => (
-                    <div key={field.key} style={{ marginBottom: 16 }}>
-                      <div style={{ fontWeight: 600, fontSize: 14, color: fg, marginBottom: 6 }}>{field.label}</div>
-                      <input type={field.type} value={aorData[field.key as keyof typeof aorData] as string}
-                        onChange={(e) => setAorData((prev) => ({ ...prev, [field.key]: e.target.value }))}
-                        placeholder={field.placeholder}
-                        style={{
-                          width: "100%", padding: "12px 14px", borderRadius: 10,
-                          border: `1px solid ${borderColor}`, background: cardBg, color: fg,
-                          fontSize: 14, boxSizing: "border-box",
-                        }} />
-                    </div>
-                  ))}
+                  <div style={{ fontWeight: 700, fontSize: 17, color: fg, marginBottom: 6 }}>{language === "es" ? "¿Cómo podemos comunicarnos con usted?" : "How can we reach you?"}</div>
+                  <div style={{ fontSize: 13, color: subFg, marginBottom: 16 }}>{language === "es" ? "No necesita teléfono, ID ni dirección para pedir ayuda." : "You don't need a phone, ID, or address to ask for help."}</div>
+                  <label htmlFor="zs-aor-name" style={{ display: "block", fontWeight: 600, fontSize: 14, color: fg, marginBottom: 6 }}>{language === "es" ? "Nombre o apodo (opcional)" : "First name or nickname (optional)"}</label>
+                  <input id="zs-aor-name" type="text" autoComplete="given-name" value={aorData.name} onChange={(e) => setAorData((prev) => ({ ...prev, name: e.target.value }))} style={{ ...{ width: "100%", minHeight: 48, padding: "12px 14px", borderRadius: 10, border: `1px solid ${borderColor}`, background: cardBg, color: fg, fontSize: 16, boxSizing: "border-box" as const }, marginBottom: 16 }} />
+                  <fieldset style={{ border: 0, padding: 0, margin: "0 0 16px" }}>
+                    <legend style={{ fontWeight: 600, fontSize: 14, color: fg, marginBottom: 8 }}>{language === "es" ? "La mejor forma de contactarle" : "Best way to reach you"}</legend>
+                    {CONTACT_PREFERENCES.map((preference) => <label key={preference} style={{ display: "flex", alignItems: "center", gap: 10, minHeight: 44, padding: "8px 12px", marginBottom: 6, borderRadius: 10, border: `1px solid ${aorData.contactPreference === preference ? "var(--zs-color-brand)" : borderColor}`, background: aorData.contactPreference === preference ? (darkMode ? "#163d42" : "#e3f5f3") : cardBg, cursor: "pointer", fontSize: 15, color: fg }}>
+                      <input type="radio" name="zs-aor-contact" value={preference} checked={aorData.contactPreference === preference} onChange={() => setAorData((prev) => ({ ...prev, contactPreference: preference }))} style={{ width: 20, height: 20, accentColor: "var(--zs-color-brand)" }} />
+                      {CONTACT_PREFERENCE_LABELS[preference][language]}
+                    </label>)}
+                  </fieldset>
+                  {contactNeedsPhone(aorData.contactPreference || null) && <>
+                    <label htmlFor="zs-aor-phone" style={{ display: "block", fontWeight: 600, fontSize: 14, color: fg, marginBottom: 6 }}>{language === "es" ? "Número de teléfono" : "Phone number"}</label>
+                    <input id="zs-aor-phone" type="tel" autoComplete="tel" inputMode="tel" value={aorData.phone} onChange={(e) => setAorData((prev) => ({ ...prev, phone: e.target.value }))} placeholder="(209) 555-0100" style={{ ...{ width: "100%", minHeight: 48, padding: "12px 14px", borderRadius: 10, border: `1px solid ${borderColor}`, background: cardBg, color: fg, fontSize: 16, boxSizing: "border-box" as const }, marginBottom: 16 }} />
+                  </>}
+                  <label htmlFor="zs-aor-housing" style={{ display: "block", fontWeight: 600, fontSize: 14, color: fg, marginBottom: 6 }}>{language === "es" ? "¿Dónde se está quedando ahora? (opcional)" : "Where are you staying right now? (optional)"}</label>
+                  <select id="zs-aor-housing" value={aorData.housingStatus} onChange={(e) => setAorData((prev) => ({ ...prev, housingStatus: e.target.value as HousingStatus | "", sdohConsent: e.target.value ? prev.sdohConsent : false }))} style={{ ...{ width: "100%", minHeight: 48, padding: "12px 14px", borderRadius: 10, border: `1px solid ${borderColor}`, background: cardBg, color: fg, fontSize: 16, boxSizing: "border-box" as const }, marginBottom: 8 }}>
+                    <option value="">{language === "es" ? "Saltar esta pregunta" : "Skip this question"}</option>
+                    {HOUSING_STATUSES.map((status) => <option key={status} value={status}>{HOUSING_STATUS_LABELS[status][language]}</option>)}
+                  </select>
+                  {aorData.housingStatus && <label style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 16, cursor: "pointer", fontSize: 13, color: subFg, lineHeight: 1.5 }}>
+                    <input type="checkbox" checked={aorData.sdohConsent} onChange={(e) => setAorData((prev) => ({ ...prev, sdohConsent: e.target.checked }))} style={{ width: 20, height: 20, marginTop: 1, accentColor: "var(--zs-color-brand)", flexShrink: 0 }} />
+                    <span>{language === "es" ? "Pueden usar esto para entender quién recibe ayuda y qué lo impide. Los investigadores solo ven totales, nunca su nombre. Si no marca esto, no lo guardamos." : "You can use this to understand who gets help and what gets in the way. Researchers only see totals, never your name. If you leave this unchecked, we don't save it."}</span>
+                  </label>}
                   <button onClick={() => navigate("referral-destination")} style={{ width: "100%", padding: "12px 14px", marginBottom: 10, background: selectedProvider ? "#e3f5f3" : cardBg, color: selectedProvider ? "#0f766e" : fg, border: `1px solid ${selectedProvider ? "#b8e5e0" : borderColor}`, borderRadius: 10, fontWeight: 800, fontSize: 14, cursor: "pointer" }}>{selectedProvider ? `Destination selected: ${selectedProvider.org_name}` : "Choose a referral destination"}</button>
                   <div style={{ display: "flex", gap: 10 }}>
                     <button onClick={() => setAorStep(0)} style={{
@@ -1792,12 +1851,12 @@ export default function Home() {
                       ))}
                     </div>
                   </div>
-                  {aorData.name && (
+                  {(aorData.name || aorData.contactPreference) && (
                     <div style={{ background: cardBg, border: `1px solid ${borderColor}`, borderRadius: 12, padding: "14px", marginBottom: 16 }}>
-                      <div style={{ fontWeight: 600, fontSize: 13, color: subFg, marginBottom: 8 }}>CONTACT INFO</div>
-                      {aorData.name && <div style={{ fontSize: 14, color: fg, marginBottom: 4 }}>Name: {aorData.name}</div>}
-                      {aorData.dob && <div style={{ fontSize: 14, color: fg, marginBottom: 4 }}>DOB: {aorData.dob}</div>}
-                      {aorData.phone && <div style={{ fontSize: 14, color: fg }}>Phone: {aorData.phone}</div>}
+                      <div style={{ fontWeight: 600, fontSize: 13, color: subFg, marginBottom: 8 }}>{language === "es" ? "CONTACTO" : "CONTACT"}</div>
+                      {aorData.name && <div style={{ fontSize: 14, color: fg, marginBottom: 4 }}>{language === "es" ? "Nombre" : "Name"}: {aorData.name}</div>}
+                      {aorData.contactPreference && <div style={{ fontSize: 14, color: fg, marginBottom: 4 }}>{CONTACT_PREFERENCE_LABELS[aorData.contactPreference][language]}</div>}
+                      {aorData.phone && contactNeedsPhone(aorData.contactPreference || null) && <div style={{ fontSize: 14, color: fg }}>{language === "es" ? "Teléfono" : "Phone"}: {aorData.phone}</div>}
                     </div>
                   )}
                   {selectedProvider && <div style={{ background: "#e3f5f3", border: "1px solid #b8e5e0", borderRadius: 12, padding: "14px", marginBottom: 16 }}><div style={{ fontWeight: 800, fontSize: 13, color: "#0f766e", marginBottom: 6 }}>REFERRAL DESTINATION</div><div style={{ fontSize: 15, fontWeight: 800, color: fg }}>{selectedProvider.org_name}</div><div style={{ marginTop: 4, fontSize: 13, color: subFg }}>{selectedProvider.program_name} · {selectedProvider.city}</div>{aorHandoff && <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid #b8e5e0", fontSize: 12, color: "#0f766e" }}><strong>Handoff:</strong> {aorHandoff.outcome.replace(/-/g, " ")} · Documents: {aorHandoff.documentBurden} · Transit: {aorHandoff.transitFeasibility}</div>}<button onClick={() => navigate("referral-destination")} style={{ marginTop: 10, border: 0, background: "transparent", color: "#0f766e", fontWeight: 800, fontSize: 12, padding: 0 }}>Change selection</button></div>}
@@ -1860,7 +1919,7 @@ export default function Home() {
             }}>{clientUser ? "View Profile" : t.signIn}</button>
           </div>
           {[
-            { icon: UsersRound, label: "Workspaces", dest: "role-portal" as Screen },
+            { icon: UsersRound, label: language === "es" ? "Acceso para personal" : "Staff sign-in", dest: "role-portal" as Screen },
             { icon: CalendarDays, label: "Referral History", dest: "referral-history" as Screen },
             { icon: Landmark, label: "Full Service Directory", dest: "client-directory" as Screen },
             { icon: CircleHelp, label: t.helpCenter, dest: "gethelp" as Screen },
@@ -1901,12 +1960,15 @@ export default function Home() {
               { label: t.largeText, value: largeText, toggle: () => setLargeText(!largeText) },
               { label: t.darkMode, value: darkMode, toggle: () => setDarkMode(!darkMode) },
                 { label: t.reduceMotion, value: reduceMotion, toggle: () => setReduceMotion(!reduceMotion) },
+              { label: language === "es" ? "Modo de pocos datos" : "Low-data mode", value: lowData, toggle: () => setLowData(!lowData) },
+              { label: language === "es" ? "Teléfono compartido (no guardar en este teléfono)" : "Shared phone (don't keep my info on this phone)", value: sharedDevice, toggle: () => setSharedDevice(!sharedDevice) },
             ].map((opt) => (
               <div key={opt.label} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
                 <span style={{ color: fg, fontSize: 14 }}>{opt.label}</span>
                 <button type="button" role="switch" aria-checked={opt.value} aria-label={opt.label} onClick={opt.toggle} className="zs-switch" />
               </div>
             ))}
+          <button type="button" onClick={() => { removeLocal([LOCAL_KEYS.saved, LOCAL_KEYS.recent, LOCAL_KEYS.lastReferral, "zipshift.field-test.session", "zipshift-notification-read"]); if (!clientUser) setSavedProviders([]); setRecentlyViewed([]); setLastReferralCode(null); announce(language === "es" ? "Datos borrados de este teléfono" : "Cleared from this phone"); }} style={{ marginTop: 8, width: "100%", minHeight: 48, borderRadius: 10, border: "2px solid #b91c1c", background: "transparent", color: "#b91c1c", fontWeight: 800, fontSize: 15, cursor: "pointer" }}>{language === "es" ? "Borrar mis lugares y búsquedas de este teléfono" : "Clear my saved places and history from this phone"}</button>
           </div>
         </div>
         </main>
@@ -2080,12 +2142,15 @@ export default function Home() {
             { label: t.largeText, value: largeText, toggle: () => setLargeText(!largeText) },
             { label: t.darkMode, value: darkMode, toggle: () => setDarkMode(!darkMode) },
                 { label: t.reduceMotion, value: reduceMotion, toggle: () => setReduceMotion(!reduceMotion) },
+            { label: language === "es" ? "Modo de pocos datos" : "Low-data mode", value: lowData, toggle: () => setLowData(!lowData) },
+            { label: language === "es" ? "Teléfono compartido (no guardar en este teléfono)" : "Shared phone (don't keep my info on this phone)", value: sharedDevice, toggle: () => setSharedDevice(!sharedDevice) },
           ].map((opt) => (
             <div key={opt.label} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
               <span style={{ color: fg, fontSize: 15 }}>{opt.label}</span>
               <button type="button" role="switch" aria-checked={opt.value} aria-label={opt.label} onClick={opt.toggle} className="zs-switch" />
             </div>
           ))}
+          <button type="button" onClick={() => { removeLocal([LOCAL_KEYS.saved, LOCAL_KEYS.recent, LOCAL_KEYS.lastReferral, "zipshift.field-test.session", "zipshift-notification-read"]); if (!clientUser) setSavedProviders([]); setRecentlyViewed([]); setLastReferralCode(null); announce(language === "es" ? "Datos borrados de este teléfono" : "Cleared from this phone"); }} style={{ marginTop: 8, width: "100%", minHeight: 48, borderRadius: 10, border: "2px solid #b91c1c", background: "transparent", color: "#b91c1c", fontWeight: 800, fontSize: 15, cursor: "pointer" }}>{language === "es" ? "Borrar mis lugares y búsquedas de este teléfono" : "Clear my saved places and history from this phone"}</button>
         </div>
         </main>
         <RenderSlot render={BottomNav} />
@@ -2102,10 +2167,12 @@ export default function Home() {
     return (
       <main id="main-content" key={screen} className="zs-screen"><IntakeFormFlow
         onBack={() => setScreen("gethelp")}
-        onSubmit={(data) => {
-          console.log("Intake form submitted:", data);
-          alert("Thank you! Your intake form has been submitted.");
-          setScreen("home");
+        onSubmit={(data, referralId) => {
+          // Show the same confirmation (with the referral code) as Get Help instead of a blocking alert.
+          if (referralId) { setLastReferralCode(referralId); if (!sharedDevice) writeLocal(LOCAL_KEYS.lastReferral, referralId); }
+          setAorData((prev) => ({ ...prev, contactPreference: (CONTACT_PREFERENCES as readonly string[]).includes(data.contactPreference) ? data.contactPreference as ContactPreference : "" }));
+          setAorSubmitted(true);
+          navigate("gethelp");
         }}
       /></main>
     );
@@ -2133,6 +2200,11 @@ export default function Home() {
 
   if (screen === "role-portal") {
     return <div key={screen} className="zs-screen"><RolePortal user={sessionUser} onNavigate={(destination) => setScreen(destination as Screen)} /></div>;
+  }
+  // Identified care workspaces are closed to research-only accounts (the API
+  // answers 403); send them to the de-identified research workspace instead.
+  if (isResearchOnly(sessionUser) && (screen === "staff-intake" || screen === "referrals-dispatch" || screen === "care-coordination" || screen === "specialist-dashboard")) {
+    return <div key="researcher-analytics" className="zs-screen"><ResearcherAnalytics onBack={() => setScreen("home")} onSessionChange={handleWorkspaceSession} /></div>;
   }
   if (screen === "staff-intake") {
     return <div key={screen} className="zs-screen"><StaffIntakeFlow onBack={() => setScreen("role-portal")} onComplete={() => setScreen("referrals-dispatch")} /></div>;
