@@ -1,0 +1,14 @@
+metric,year,stanislaus,merced,california,united_states,source_url
+"Poverty, all ages (%) - SAIPE",2024,14.2,18.4,11.8,,https://www2.census.gov/programs-surveys/saipe/datasets/2024/2024-state-and-county/est24-ca.txt
+"Child poverty, ages 0-17 (%) - SAIPE",2024,18.0,24.0,14.6,,https://www2.census.gov/programs-surveys/saipe/datasets/2024/2024-state-and-county/est24-ca.txt
+Median household income ($) - SAIPE,2024,77812,65325,100130,,https://www2.census.gov/programs-surveys/saipe/datasets/2024/2024-state-and-county/est24-ca.txt
+"Uninsured, under 65 (%) - SAHIE",2024,6.6,8.5,6.9,,https://www2.census.gov/programs-surveys/sahie/datasets/time-series/estimates-acs/sahie-2024-csv.zip
+Life expectancy (years) - CHR&R/NCHS,2021-2023,75.9,76.8,79.7,77.6,https://www.countyhealthrankings.org/sites/default/files/media/document/analytic_supplement_20260325%5B1%5D.csv
+Food insecurity (% of population) - CHR&R/Map the Meal Gap,2023,14.2,17.7,13.7,14.3,https://www.countyhealthrankings.org/sites/default/files/media/document/analytic_supplement_20260325%5B1%5D.csv
+Severe housing cost burden (% households paying 50%+) - CHR&R/ACS,2020-2024,18.6,20.6,20.5,15.1,https://www.countyhealthrankings.org/sites/default/files/media/document/analytic_supplement_20260325%5B1%5D.csv
+Frequent mental distress (% adults) - CHR&R/BRFSS,2023,19.1,18.8,18.4,18.6,https://www.countyhealthrankings.org/sites/default/files/media/document/analytic_supplement_20260325%5B1%5D.csv
+Unemployment (%) - CHR&R/BLS,2024,6.9,9.8,5.3,4.0,https://www.countyhealthrankings.org/sites/default/files/media/document/analytic_supplement_20260325%5B1%5D.csv
+"Medi-Cal certified eligibles, share of population (%)",Jan 2026,44.4,49.5,35.4,,https://www.dhcs.ca.gov/dataandstats/statistics/Documents/Medi-Cal-Eligibles-County-Populations-JAN2026.pdf
+Medi-Cal share of children 0-18 (%),Jan 2026,59.0,69.0,50.9,,https://www.dhcs.ca.gov/dataandstats/statistics/Documents/Medi-Cal-Eligibles-County-Populations-JAN2026.pdf
+"Bachelor's degree or higher, age 25+ (%) - ACS 5-yr",2020-2024,19.6,15.3,37.1,35.7,"https://www.census.gov/quickfacts/fact/table/stanislauscountycalifornia,mercedcountycalifornia,CA,US/PST045224"
+Healthy Places Index 3.0 county percentile (0=least healthy),HPI 3.0 (2022 release),30,14,,,https://services.arcgis.com/XG15cJAlne2vxtgt/arcgis/rest/services/HPI/FeatureServer/0

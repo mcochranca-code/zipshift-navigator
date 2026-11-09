@@ -1,0 +1,9 @@
+year,official_poverty_rate_pct,spm_rate_pct,child_official_pct,child_spm_pct,source_url,note
+2018,11.8,12.8,16.2,13.7,https://www2.census.gov/programs-surveys/demo/tables/p60/290/table_3_opm_hist.xlsx; https://www2.census.gov/programs-surveys/demo/tables/p60/290/table_8_spm_hist.xlsx,
+2019,10.5,11.7,14.4,12.4,same,
+2020,11.5,9.1,16.0,9.6,same,pandemic relief lowered SPM
+2021,11.6,7.7,15.3,5.1,same,expanded Child Tax Credit year; record-low SPM
+2022,11.5,12.1,15.0,12.0,same,CTC expansion expired
+2023,11.1,12.7,15.3,13.5,same,
+2024,10.7,13.0,14.4,13.5,same,revised in 2026 report; originally published Sept 2025 as OPM 10.6 / SPM 12.9
+2025,10.2,13.1,13.4,13.4,same,2025 vs 2024 SPM change not statistically significant

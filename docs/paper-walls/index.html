@@ -1,0 +1,1001 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Paper Walls — Social Determinants of Health, Document Burden & Navigation Burden</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400&display=swap"
+    />
+    <link rel="stylesheet" href="hark.css" />
+    <link rel="stylesheet" href="hark-hero.css" />
+    <style>
+      :root {
+        --x-navy: #11253f;
+        --x-navy-2: #1b3557;
+        --x-teal: #1f8a8a;
+        --x-amber: #d98c1f;
+        --x-slate: #6f86a6;
+        --x-teal-t: #4fc3bd;
+        --x-amber-t: #f0a83a;
+        --x-ink: #f3f5f8;
+        --x-ink-2: #a9b6c7;
+        --x-line: rgba(255, 255, 255, 0.14);
+      }
+      html,
+      body { background: var(--x-navy); }
+      .x-deck {
+        position: fixed;
+        inset: 0;
+        scroll-snap-type: y mandatory;
+        overflow-y: auto;
+        scroll-behavior: smooth;
+        background: var(--x-navy);
+        color: var(--x-ink);
+        font: var(--type-body);
+        font-family: var(--sans);
+      }
+      .x-slide {
+        scroll-snap-align: start;
+        min-height: 100vh;
+        min-height: 100dvh;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 18px;
+        padding: 72px var(--gutter) 64px;
+        max-width: 1100px;
+        margin: 0 auto;
+        background: var(--x-navy);
+        box-sizing: border-box;
+      }
+      .x-slide > * { max-width: 100%; }
+      .x-eyebrow {
+        font: var(--type-tag);
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--x-teal-t);
+        margin: 0;
+      }
+      .x-slide h1 { font: var(--type-display); margin: 0; color: #fff; letter-spacing: -0.02em; }
+      .x-slide h2 { font: var(--type-title); margin: 0; color: #fff; }
+      .x-slide h3 { font: var(--type-heading); margin: 0 0 6px; color: #fff; }
+      .x-slide p { margin: 0; color: var(--x-ink); }
+      .x-lead { font: var(--type-heading); font-weight: var(--weight-regular); color: var(--x-ink-2); max-width: 62ch; }
+      .x-body { max-width: 68ch; color: var(--x-ink-2); }
+      .x-src { font: var(--type-caption); color: var(--x-ink-2); opacity: 0.8; margin-top: 4px; }
+      .x-note { font: var(--type-caption); color: var(--x-ink-2); opacity: 0.8; }
+      .x-amber { color: var(--x-amber-t); }
+      .x-teal { color: var(--x-teal-t); }
+      /* panels */
+      .x-panel {
+        background: var(--x-navy-2);
+        border: 1px solid var(--x-line);
+        border-radius: var(--r-m);
+        padding: 18px 20px;
+      }
+      .x-grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
+      .x-grid--2 { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+      .x-fig { font: var(--type-display); color: #fff; letter-spacing: -0.02em; line-height: 1.05; }
+      .x-fig small { font: var(--type-label); color: var(--x-ink-2); display: block; margin-top: 2px; }
+      .x-label { font: var(--type-caption); text-transform: uppercase; letter-spacing: 0.08em; color: var(--x-teal-t); margin-bottom: 8px; }
+      .x-quote { font: var(--type-title); color: #fff; max-width: 30ch; line-height: 1.35; }
+      .x-quote--big { font-size: clamp(22px, 3.4vw, 40px); font-weight: var(--weight-medium); max-width: 22ch; line-height: 1.25; }
+      .x-cite { font: var(--type-small); color: var(--x-ink-2); }
+      .x-tag {
+        display: inline-block; font: var(--type-tag); letter-spacing: 0.06em; text-transform: uppercase;
+        border: 1px solid var(--x-line); border-radius: var(--r-pill); padding: 4px 10px; color: var(--x-ink-2);
+      }
+      .x-tag--amber { border-color: var(--x-amber-t); color: var(--x-amber-t); }
+      /* chart card: theme surface so the kit's chart inks stay readable */
+      .x-card { background: var(--fill-primary-on); color: var(--text-primary); border-radius: var(--r-m); padding: 14px 16px 8px; }
+      .x-card .chart { margin: 0; }
+      /* timeline */
+      .x-time { overflow-y: auto; max-height: 56vh; display: grid; gap: 0; padding-right: 8px; }
+      .x-time li { list-style: none; display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 16px; padding: 9px 0; border-bottom: 1px solid var(--x-line); }
+      .x-time b { color: var(--x-amber-t); font-variant-numeric: tabular-nums; font-weight: var(--weight-medium); }
+      .x-time span { color: var(--x-ink-2); font: var(--type-small); }
+      .x-refs { overflow-y: auto; max-height: 64vh; padding: 18px 20px; }
+      .x-refs p { font: var(--type-small); color: var(--x-ink-2); margin: 0 0 12px; padding-left: 22px; text-indent: -22px; }
+      .x-refs a { color: var(--x-teal-t); word-break: break-word; display: inline-flex; align-items: center; min-height: 44px; text-indent: 0; }
+      .x-chrome button:disabled { opacity: 0.35; cursor: default; }
+      a.x-tag { min-height: 44px; box-sizing: border-box; display: inline-flex; align-items: center; padding: 8px 14px; }
+      .x-table { width: 100%; border-collapse: collapse; font: var(--type-small); font-variant-numeric: tabular-nums; }
+      .x-table th, .x-table td { text-align: right; padding: 9px 10px; border-bottom: 1px solid var(--x-line); color: var(--x-ink); }
+      .x-table th:first-child, .x-table td:first-child { text-align: left; color: var(--x-ink-2); }
+      .x-table small { color: var(--x-ink-2); font: var(--type-caption); }
+      .x-table thead th { color: var(--x-teal-t); font: var(--type-caption); text-transform: uppercase; letter-spacing: 0.06em; }
+      .x-hero { position: relative; border-radius: var(--r-l); overflow: hidden; }
+      .x-hero img { width: 100%; height: clamp(220px, 42vh, 420px); object-fit: cover; display: block; opacity: 0.55; }
+      .x-band img { width: 100%; height: clamp(160px, 26vh, 280px); object-fit: cover; border-radius: var(--r-m); display: block; opacity: 0.7; }
+      /* chrome */
+      .x-prog { position: fixed; inset: 0 auto auto 0; height: 3px; width: 0; background: var(--x-amber); z-index: 9; transition: width 180ms linear; }
+      .x-chrome {
+        position: fixed; right: 16px; bottom: 14px; z-index: 9; display: flex; gap: 8px; align-items: center;
+        font: var(--type-caption); color: var(--x-ink-2); background: rgba(10, 22, 38, 0.72); border: 1px solid var(--x-line);
+        border-radius: var(--r-pill); padding: 6px 8px; backdrop-filter: blur(8px);
+      }
+      .x-chrome button {
+        min-width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--x-line); background: transparent;
+        color: var(--x-ink); font: var(--type-small); cursor: pointer;
+      }
+      .x-chrome b { font-variant-numeric: tabular-nums; color: var(--x-ink); font-weight: var(--weight-medium); padding: 0 4px; }
+      .x-reveal { opacity: 0; transform: translateY(14px); transition: opacity 500ms var(--ease-out), transform 500ms var(--ease-out); }
+      .x-slide.is-on .x-reveal { opacity: 1; transform: none; }
+      @media (max-width: 640px) {
+        .x-slide { padding: 56px 18px 72px; gap: 14px; }
+        .x-bar { grid-template-columns: minmax(78px, 110px) minmax(0, 1fr) auto; }
+        .x-time li { grid-template-columns: 62px minmax(0, 1fr); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .x-deck { scroll-behavior: auto; }
+        .x-reveal { opacity: 1; transform: none; transition: none; }
+      }
+    </style>
+    <link rel="stylesheet" href="hark-charts.css" />
+  </head>
+  <body>
+    <div class="page" id="top">
+    <div class="x-prog" id="prog"></div>
+    <main class="x-deck" id="deck">
+      <!-- 1 -->
+      <section class="x-slide">
+        <div class="x-hero x-reveal">
+          <img src="hero-paper-wall.png" alt="A wall of forms and paperwork" />
+        </div>
+        <p class="x-eyebrow x-reveal">Matt Cochran · ZipShift Navigator · November 2026</p>
+        <h1 class="x-reveal">Paper Walls</h1>
+        <p class="x-lead x-reveal">Social Determinants of Health, Document Burden, Navigation Burden &amp; Resource Access</p>
+        <p class="x-reveal"><span class="x-tag x-tag--amber">The help exists. Getting to it is the problem.</span></p>
+        <p class="x-note x-reveal">Use ← → or swipe. 21 slides.</p>
+      </section>
+
+      <!-- 2 -->
+      <section class="x-slide">
+        <p class="x-eyebrow x-reveal">Upper Silesia, 1848</p>
+        <p class="x-quote x-quote--big x-reveal">“The law existed, the civil servants were there—and the people died in their thousands from starvation and disease. The law did not help, as it was only paper with writing…”</p>
+        <p class="x-cite x-reveal">Rudolf Virchow, <em>Report on the Typhus Epidemic in Upper Silesia</em> (1848/2006)</p>
+        <div class="x-grid x-reveal">
+          <div class="x-panel"><p class="x-fig" data-count="10" data-suffix="%">0<small>of the Pless district died in one year</small></p></div>
+          <div class="x-panel"><p class="x-fig" data-count="14.3" data-dec="1" data-suffix="%">0<small>Rybnik typhus attack rate</small></p></div>
+          <div class="x-panel"><p class="x-fig" data-count="20.46" data-dec="2" data-suffix="%">0<small>case fatality</small></p></div>
+        </div>
+        <p class="x-src x-reveal">Source: Virchow (1848/2006), <em>AJPH</em> 96(12).</p>
+      </section>
+
+      <!-- 3 -->
+      <section class="x-slide">
+        <p class="x-eyebrow x-reveal">What drives health</p>
+        <h2 class="x-reveal">Clinical care explains about 1 in 6 of the differences.</h2>
+        <div class="x-card x-reveal">
+          <figure class="chart">
+            <figcaption class="chart__cap">Three estimates of what shapes health outcomes<small>Share of influence, %</small></figcaption>
+            <div class="chart__canvas"><canvas role="img" aria-label="Clinical care accounts for 10 to 20 percent in all three models; social and economic factors 15 to 47 percent" data-bars='{"src":"d-drivers","h":1,"stack":1,"unit":"%"}'></canvas></div>
+          </figure>
+        </div>
+        <script type="application/json" id="d-drivers">
+          {"labels":["McGinnis 2002","CHR weights 2010–24","Hood 2016"],
+           "sets":[{"label":"Social & economic","data":[15,40,47]},{"label":"Behaviors","data":[40,30,34]},{"label":"Clinical care","data":[10,20,16]},{"label":"Environment","data":[5,10,3]},{"label":"Genetics","data":[30,0,0]}]}
+        </script>
+        <p class="x-note x-reveal">Caveat: 40/30/20/10 was a modeling choice. County Health Rankings retired it in 2025; the new model is 50% social &amp; economic, 25% health infrastructure, 25% physical environment.</p>
+        <p class="x-src x-reveal">Sources: McGinnis, Williams-Russo &amp; Knickman (2002); Booske et al. (2010); Hood et al. (2016); CHR&amp;R model evolution.</p>
+      </section>
+
+      <!-- 4 -->
+      <section class="x-slide">
+        <p class="x-eyebrow x-reveal">175 years of evidence</p>
+        <h2 class="x-reveal">The finding keeps being made, and keeps not being acted on.</h2>
+        <ol class="x-time x-reveal">
+          <li><b>1845</b><span><strong>Engels:</strong> Liverpool average age at death 35 for gentry, 15 for labourers — “social murder”.</span></li>
+          <li><b>1848</b><span><strong>Virchow:</strong> “Medicine is a social science.”</span></li>
+          <li><b>1899</b><span><strong>Du Bois, <em>The Philadelphia Negro</em>:</strong> house-to-house survey of 10,000+ residents.</span></li>
+          <li><b>1906</b><span><strong>Du Bois:</strong> mortality gaps are “not a racial disease but a social disease”.</span></li>
+          <li><b>1930s</b><span><strong>HOLC redlining maps</strong> grade neighborhoods A to D.</span></li>
+          <li><b>1974</b><span><strong>Lalonde Report:</strong> the health field concept.</span></li>
+          <li><b>1978</b><span><strong>Alma-Ata:</strong> inequality “politically, socially and economically unacceptable”.</span></li>
+          <li><b>1980</b><span><strong>Black Report:</strong> class V infants die at 2× class I; 74,000 avoidable deaths.</span></li>
+          <li><b>1984</b><span><strong>Whitehall I:</strong> lowest civil-service grade ~3× mortality — the social gradient.</span></li>
+          <li><b>1986</b><span><strong>Ottawa Charter:</strong> prerequisites — peace, shelter, education, food, income.</span></li>
+          <li><b>1991</b><span><strong>Dahlgren–Whitehead</strong> rainbow model.</span></li>
+          <li><b>1995</b><span><strong>Link &amp; Phelan:</strong> fundamental cause theory — money, knowledge, power, connections.</span></li>
+          <li><b>2005</b><span><strong>Patient Navigator Act</strong> (Pub. L. 109-18).</span></li>
+          <li><b>2008</b><span><strong>WHO Commission:</strong> “Social injustice is killing people on a grand scale.”</span></li>
+          <li><b>2010</b><span><strong>Marmot Review; Healthy People 2020; County Health Rankings</strong> launch.</span></li>
+          <li><b>2016</b><span><strong>Chetty et al.:</strong> 14.6-year (men) and 10.1-year (women) life expectancy gap, richest vs poorest 1%.</span></li>
+          <li><b>2022</b><span><strong>CalAIM</strong> ECM &amp; Community Supports; Medi-Cal CHW and Peer Support benefits.</span></li>
+          <li><b>2023–24</b><span><strong>Medicaid unwinding:</strong> 25.2M disenrolled nationally, 69% procedural.</span></li>
+          <li><b>2025</b><span><strong>H.R.1</strong> Medicaid work requirements and six-month renewals; CHR&amp;R new model.</span></li>
+        </ol>
+        <p class="x-src x-reveal">Sources: Engels (1845); Virchow (1848/2006); Du Bois (1899, 1906/2003); Lalonde (1974); WHO (1978, 1986, 2008); DHSS (1980); Marmot et al. (1984, 2010); Dahlgren &amp; Whitehead (1991); Link &amp; Phelan (1995); Pub. L. 109-18; Chetty et al. (2016); DHCS; KFF; CRS (2025).</p>
+      </section>
+
+      <!-- 5 -->
+      <section class="x-slide">
+        <p class="x-eyebrow x-reveal">The gradient never left</p>
+        <h2 class="x-reveal">Same finding, four eras.</h2>
+        <div class="x-grid x-grid--2 x-reveal">
+          <div class="x-panel">
+            <p class="x-label">Engels · Liverpool, 1840</p>
+            <p class="x-fig"><span data-count="35">0</span> / <span data-count="22">0</span> / <span data-count="15">0</span><small>Average age at death: upper class / tradesmen / labourers (years)</small></p>
+          </div>
+          <div class="x-panel">
+            <p class="x-label">Du Bois · Philadelphia, 1896–1905</p>
+            <p class="x-fig"><span data-count="18.72" data-dec="2">0</span> vs <span data-count="22.02" data-dec="2">0</span><small>Deaths per 1,000: all residents vs Black residents</small></p>
+          </div>
+          <div class="x-panel">
+            <p class="x-label">Whitehall I · 1984</p>
+            <p class="x-fig">≈<span data-count="3">0</span>×<small>Mortality, lowest vs highest civil-service grade (n = 17,530)</small></p>
+          </div>
+          <div class="x-panel">
+            <p class="x-label">Chetty et al. · 2016</p>
+            <p class="x-fig"><span data-count="14.6" data-dec="1">0</span> / <span data-count="10.1" data-dec="1">0</span><small>Years of life expectancy gap, richest vs poorest 1%: men / women</small></p>
+          </div>
+        </div>
+        <p class="x-src x-reveal">Sources: Engels (1845); Du Bois (1899); Marmot, Shipley &amp; Rose (1984); Chetty et al. (2016).</p>
+      </section>
+
+      <!-- 6 -->
+      <section class="x-slide">
+        <p class="x-eyebrow x-reveal">Redlining still breathes</p>
+        <h2 class="x-reveal">Neighborhoods graded “hazardous” in the 1930s still have <span class="x-amber">2.4×</span> the asthma ED visits.</h2>
+        <div class="x-grid x-grid--2 x-reveal">
+          <div class="x-card">
+            <figure class="chart">
+              <figcaption class="chart__cap">Asthma ED visits, 8 California cities incl. Fresno &amp; Stockton<small>Per 10,000 per year, by HOLC grade · adjusted RR 1.39</small></figcaption>
+              <div class="chart__canvas"><canvas role="img" aria-label="A-grade 26.5 vs D-grade 63.5 asthma ED visits per 10,000" data-bars='{"src":"d-asthma","hi":1}'></canvas></div>
+            </figure>
+          </div>
+          <div class="x-card">
+            <figure class="chart">
+              <figcaption class="chart__cap">Greenspace falls with every grade<small>Mean NDVI, 102 US cities</small></figcaption>
+              <div class="chart__canvas"><canvas role="img" aria-label="NDVI A 0.47, B 0.43, C 0.39, D 0.36" data-bars='{"src":"d-ndvi","hi":3,"dec":2}'></canvas></div>
+            </figure>
+          </div>
+        </div>
+        <script type="application/json" id="d-asthma">{"labels":["A-grade","D-grade (redlined)"],"sets":[{"label":"Visits","data":[26.5,63.5]}]}</script>
+        <script type="application/json" id="d-ndvi">{"labels":["A","B","C","D"],"sets":[{"label":"NDVI","data":[0.47,0.43,0.39,0.36]}]}</script>
+        <p class="x-src x-reveal">Sources: Nardone et al. (2020), <em>Lancet Planetary Health</em>; Nardone et al. (2021), <em>Environmental Health Perspectives</em>.</p>
+      </section>
+
+      <!-- 7 -->
+      <section class="x-slide">
+        <p class="x-eyebrow x-reveal">Today</p>
+        <h2 class="x-reveal">A <span class="x-amber" data-count="14.7" data-dec="1">0</span>-year gap in US life expectancy, 2024.</h2>
+        <div class="x-card x-reveal">
+          <figure class="chart">
+            <figcaption class="chart__cap">Life expectancy at birth by race and Hispanic origin<small>United States, 2024, years</small></figcaption>
+            <div class="chart__canvas"><canvas role="img" aria-label="Asian 85.8, Hispanic 81.8, All 79.0, White 78.9, Black 74.8, AI/AN 71.1 years" data-bars='{"src":"d-le","x":"group","y":["life_expectancy_2024_years"],"names":["Life expectancy"],"short":["Asian","Hispanic","All","White","Black","AI/AN"],"h":1,"min":60,"dec":1,"hi":2}'></canvas></div>
+          </figure>
+        </div>
+        <script type="text/csv" id="d-le" src="data-life-expectancy-by-race-us-2024.csv"></script>
+        <p class="x-src x-reveal">Source: Arias, Xu &amp; Tejada-Vera (2026), NCHS <em>United States Life Tables, 2024</em>. Axis starts at 60.</p>
+      </section>
+
+      <!-- 8 -->
+      <section class="x-slide">
+        <p class="x-eyebrow x-reveal">Poverty is undercounted</p>
+        <h2 class="x-reveal">Counting real costs and benefits, poverty is higher — and policy moves it.</h2>
+        <div class="x-grid x-grid--2 x-reveal" style="grid-template-columns: minmax(0, 2fr) minmax(220px, 1fr)">
+          <div class="x-card">
+            <figure class="chart">
+              <figcaption class="chart__cap">Official vs Supplemental Poverty Measure<small>United States, 2018–2025, % of people</small></figcaption>
+              <div class="chart__canvas"><canvas role="img" aria-label="SPM fell to a record low 7.7% in 2021 with the expanded Child Tax Credit, then rose to 13.1% by 2025 while the official rate fell to 10.2%" data-line='{"src":"d-pov","x":"year","y":["official_poverty_rate_pct","spm_rate_pct"],"names":["Official","SPM"],"unit":"%","dec":1}'></canvas></div>
+            </figure>
+          </div>
+          <div class="x-stackcol" style="display:grid;gap:14px">
+            <div class="x-panel"><p class="x-label">California SPM, 2023–25</p><p class="x-fig"><span data-count="17.8" data-dec="1" data-suffix="%">0</span><small>2nd highest state, vs 10.7% official</small></p></div>
+            <div class="x-panel"><p class="x-label">Policy works</p><p class="x-fig"><span data-count="5.1" data-dec="1" data-suffix="%">0</span><small>Child SPM in 2021, with the expanded Child Tax Credit (record low 7.7% overall)</small></p></div>
+          </div>
+        </div>
+        <script type="text/csv" id="d-pov" src="data-us-poverty-opm-spm-2018-2025.csv"></script>
+        <p class="x-src x-reveal">Sources: Bijou &amp; Shrider (2026), Census P60-290; Shrider &amp; Bijou (2025), P60-287; CRS (2026).</p>
+      </section>
+
+      <!-- 9 -->
+      <section class="x-slide">
+        <p class="x-eyebrow x-reveal">The conditions</p>
+        <h2 class="x-reveal">The needs are large, and measured.</h2>
+        <div class="x-grid x-grid--2 x-reveal">
+          <div class="x-panel"><p class="x-label">Housing · 2024</p><p class="x-fig"><span data-count="49" data-suffix="%">0</span><small>of US renter households cost-burdened (22.7M, a record); renters under $30k had $210/month left</small></p></div>
+          <div class="x-panel"><p class="x-label">Food · 2024</p><p class="x-fig"><span data-count="13.7" data-dec="1" data-suffix="%">0</span><small>of households food insecure — USDA's final report; the series ended Sept 2025</small></p></div>
+          <div class="x-panel"><p class="x-label">Homelessness · 2025 PIT</p><p class="x-fig"><span data-count="745652">0</span><small>people homeless; California 181,934 (~24%)</small></p></div>
+          <div class="x-panel"><p class="x-label">Screening · CMS AHC</p><p class="x-fig"><span data-count="37" data-suffix="%">0</span><small>of 1.1M+ patients screened had ≥1 unmet social need — food 63%, housing 47% of those</small></p></div>
+        </div>
+        <p class="x-src x-reveal">Sources: Harvard JCHS (2026); Rabbitt et al. (2025), USDA ERS; USDA (2025); HUD (2026) AHAR; RTI International (2026), AHC final evaluation.</p>
+      </section>
+
+      <!-- 10 -->
+      <section class="x-slide">
+        <p class="x-eyebrow x-reveal">Section · Paper walls</p>
+        <p class="x-quote x-quote--big x-reveal">“Paperwork is policy.”</p>
+        <p class="x-cite x-reveal">Office of Information and Regulatory Affairs (2023)</p>
+        <div class="x-grid x-reveal">
+          <div class="x-panel"><p class="x-label">Learning costs</p><p class="x-body">Finding out a program exists and whether you qualify.</p></div>
+          <div class="x-panel"><p class="x-label">Compliance costs</p><p class="x-body">Forms, documents, interviews, renewals.</p></div>
+          <div class="x-panel"><p class="x-label">Psychological costs</p><p class="x-body">Stigma, stress, loss of autonomy.</p></div>
+          <div class="x-panel"><p class="x-label">Redemption costs</p><p class="x-body">Actually using the benefit once approved (OIRA, 2023).</p></div>
+        </div>
+        <div class="x-grid x-grid--2 x-reveal">
+          <div class="x-panel"><p class="x-label">The time tax</p><p class="x-body">“A levy of paperwork, aggravation, and mental effort imposed on citizens in exchange for benefits that putatively exist to help them.” — Lowrey (2021)</p></div>
+          <div class="x-panel"><p class="x-label">In one voice</p><p class="x-body">A disability beneficiary on recertification: “More frightening than having cancer—twice.” Scarcity taxes bandwidth (Mullainathan &amp; Shafir 2013; Mani et al. 2013).</p></div>
+        </div>
+        <p class="x-src x-reveal">Sources: Herd &amp; Moynihan (2018); Moynihan, Herd &amp; Harvey (2015); OIRA (2023); Lowrey (2021); Mani et al. (2013).</p>
+      </section>
+
+      <!-- 11 -->
+      <section class="x-slide">
+        <p class="x-eyebrow x-reveal">Left on the table</p>
+        <h2 class="x-reveal">More than <span class="x-amber">$<span data-count="140">0</span> billion</span> in benefits go unclaimed every year.</h2>
+        <div class="x-grid x-grid--2 x-reveal">
+          <div class="x-panel">
+            <p class="x-label">Take-up among eligible people</p>
+            <table class="x-table">
+              <thead><tr><th>Program</th><th>US</th><th>California</th></tr></thead>
+              <tbody>
+                <tr><td>SNAP / CalFresh, FY2022</td><td>88%</td><td>81%</td></tr>
+                <tr><td>EITC, TY2022</td><td>80.8%</td><td>77.4%</td></tr>
+                <tr><td>WIC, 2022</td><td>53.5%</td><td>—</td></tr>
+                <tr><td>WIC, children age 4</td><td>25.4%</td><td>—</td></tr>
+                <tr><td>WIC, nonmetro</td><td>19%</td><td>—</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="x-card">
+            <figure class="chart">
+              <figcaption class="chart__cap">Share reporting difficulty enrolling<small>By program, %</small></figcaption>
+              <div class="chart__canvas"><canvas role="img" aria-label="Unemployment insurance 46%, cash assistance 43%, SNAP 41%, rental assistance 32%, SSDI 29%, Medicaid/CHIP 28%, SSI 28%" data-bars='{"src":"d-diff","h":1,"unit":"%"}'></canvas></div>
+            </figure>
+          </div>
+        </div>
+        <script type="application/json" id="d-diff">{"labels":["Unemployment ins.","Cash assistance","SNAP","Rental assistance","SSDI","Medicaid/CHIP","SSI"],"sets":[{"label":"Reported difficulty","data":[46,43,41,32,29,28,28]}]}</script>
+        <p class="x-src x-reveal">Sources: OIRA (2023); Cunnyngham (2025), USDA FNS; IRS (2026); Kessler et al. (2024), USDA FNS.</p>
+      </section>
+
+      <!-- 12 -->
+      <section class="x-slide">
+        <p class="x-eyebrow x-reveal">The unwinding</p>
+        <h2 class="x-reveal"><span class="x-amber" data-count="1998710">0</span> Californians lost Medi-Cal — 90% for paperwork.</h2>
+        <div class="x-grid x-grid--2 x-reveal" style="grid-template-columns: minmax(0, 2fr) minmax(220px, 1fr)">
+          <div class="x-card">
+            <figure class="chart">
+              <figcaption class="chart__cap">Medi-Cal enrollment since the May 2023 peak<small>Certified eligibles, millions · Jun 2026 preliminary</small></figcaption>
+              <div class="chart__canvas"><canvas role="img" aria-label="Medi-Cal fell from 16.05 million in May 2023 to 13.68 million in June 2026" data-line='{"src":"d-medi","x":"month","y":["certified_eligibles"],"names":["Certified eligibles"],"scale":0.000001,"dec":2,"unit":"M","xfmt":"month"}'></canvas></div>
+            </figure>
+          </div>
+          <div style="display:grid;gap:10px">
+            <div class="x-panel"><p class="x-body"><strong class="x-teal">90%</strong> of initial disenrollments were procedural; 66% after 90-day updates; non-MAGI (seniors, disabled) 83%.</p></div>
+            <div class="x-panel"><p class="x-body"><strong class="x-teal">25.2M</strong> disenrolled nationally, 69% procedural (KFF).</p></div>
+            <div class="x-panel"><p class="x-body">Auto (ex parte) renewals rose <strong class="x-teal">31% → 63%</strong>.</p></div>
+          </div>
+        </div>
+        <script type="text/csv" id="d-medi" src="data-medi-cal-enrollment-2023-2026.csv"></script>
+        <p class="x-src x-reveal">Sources: DHCS (2026d) Fast Facts; CHCF (2024); Tolbert &amp; Corallo (2024), KFF. Months are unevenly spaced.</p>
+      </section>
+
+      <!-- 13 -->
+      <section class="x-slide">
+        <p class="x-eyebrow x-reveal">In their own words</p>
+        <h2 class="x-reveal">8,481 people who lost Medi-Cal said what went wrong.</h2>
+        <div class="x-grid x-grid--2 x-reveal" style="grid-template-columns: minmax(0, 3fr) minmax(220px, 2fr)">
+          <div class="x-card">
+            <figure class="chart">
+              <figcaption class="chart__cap">What respondents reported<small>DHCS/CHCF procedural disenrollment survey, %</small></figcaption>
+              <div class="chart__canvas"><canvas role="img" aria-label="46% never received a renewal form; 36% want coverage back but don't know how; 31% of callers got no answer or long hold; 30% didn't know coverage would end; 23% couldn't complete the form" data-bars='{"src":"d-words","h":1,"unit":"%","hi":0}'></canvas></div>
+            </figure>
+          </div>
+          <div class="x-panel">
+            <p class="x-label">The gaps are larger</p>
+            <table class="x-table">
+              <thead><tr><th></th><th>Couldn't complete</th><th>Don't know how to restart</th></tr></thead>
+              <tbody>
+                <tr><td>Hispanic</td><td>28%</td><td>—</td></tr>
+                <tr><td>Spanish-only households</td><td>—</td><td>46%</td></tr>
+                <tr><td>White</td><td>18%</td><td>30%</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <script type="application/json" id="d-words">{"labels":["Never got a renewal form","Want it back, don't know how","Callers: no answer / long hold","Didn't know it would end","Couldn't complete the form"],"sets":[{"label":"Respondents","data":[46,36,31,30,23]}]}</script>
+        <p class="x-note x-reveal">Caveat: the survey is not weighted or representative.</p>
+        <p class="x-src x-reveal">Source: DHCS (2024), <em>Procedural Disenrollment Survey</em>; CHCF (2024).</p>
+      </section>
+
+      <!-- 14 -->
+      <section class="x-slide">
+        <p class="x-eyebrow x-reveal">CalFresh churn</p>
+        <h2 class="x-reveal">People don't leave CalFresh because they stop qualifying. They leave in paperwork months.</h2>
+        <div class="x-grid x-reveal">
+          <div class="x-panel"><p class="x-fig"><span data-count="6">0</span>×<small>more likely to exit in paperwork months</small></p></div>
+          <div class="x-panel"><p class="x-fig">55–75%<small>of leavers still income-eligible</small></p></div>
+          <div class="x-panel"><p class="x-fig">~<span data-count="500000">0</span><small>eligible households leave each year</small></p></div>
+        </div>
+        <p class="x-src x-reveal">Source: Unrath (2021), <em>Pushed Out by Paperwork</em>, California Policy Lab.</p>
+      </section>
+
+      <!-- 15 -->
+      <section class="x-slide">
+        <p class="x-eyebrow x-reveal">No ID, no help</p>
+        <h2 class="x-reveal"><span class="x-amber" data-count="20.76" data-dec="2">0</span>M adult citizens lack an unexpired driver's license.</h2>
+        <div class="x-grid x-grid--2 x-reveal">
+          <div class="x-card">
+            <figure class="chart">
+              <figcaption class="chart__cap">No unexpired driver's license, by group<small>US adult citizens, % · overall 9%; 2.6M have no government photo ID</small></figcaption>
+              <div class="chart__canvas"><canvas role="img" aria-label="White 5%, Asian/PI 13%, Hispanic 15%, Black 18%, disability 20%, income under $30k 23%" data-bars='{"src":"d-id","h":1,"unit":"%","hi":5}'></canvas></div>
+            </figure>
+          </div>
+          <div class="x-card">
+            <figure class="chart">
+              <figcaption class="chart__cap">Homeless clients without ID denied in a month<small>Provider survey, 2004, %</small></figcaption>
+              <div class="chart__canvas"><canvas role="img" aria-label="Shelter 54.1%, food stamps 53.1%, SSI 51.1%, Medicaid 45.1%" data-bars='{"src":"d-denied","h":1,"unit":"%"}'></canvas></div>
+            </figure>
+          </div>
+        </div>
+        <script type="application/json" id="d-id">{"labels":["White","Asian/PI","Hispanic","Black","Disability","Income <$30k"],"sets":[{"label":"No license","data":[5,13,15,18,20,23]}]}</script>
+        <script type="application/json" id="d-denied">{"labels":["Shelter","Food stamps","SSI","Medicaid"],"sets":[{"label":"Denied","data":[54.1,53.1,51.1,45.1]}]}</script>
+        <p class="x-body x-reveal">SSA initial disability decisions took <strong>217.5 / 231.1 / 226.2 days</strong> in FY2023–25.</p>
+        <p class="x-src x-reveal">Sources: Rothschild et al. (2024), CDCE/UMD; National Law Center on Homelessness &amp; Poverty (2004); SSA (2026a).</p>
+      </section>
+
+      <!-- 16 -->
+      <section class="x-slide">
+        <p class="x-eyebrow x-reveal">The next wall</p>
+        <h2 class="x-reveal">Work requirements: Arkansas showed what happens.</h2>
+        <div class="x-grid x-grid--2 x-reveal">
+          <div class="x-panel">
+            <p class="x-label">Arkansas, 2018</p>
+            <p class="x-fig"><span data-count="18000">0</span><small>lost coverage; uninsured ages 30–49 rose 10.5% → 14.5%; no employment gain; &gt;95% already met it or should have been exempt</small></p>
+          </div>
+          <div class="x-card">
+            <figure class="chart">
+              <figcaption class="chart__cap">Of those who lost coverage<small>Arkansas, %</small></figcaption>
+              <div class="chart__canvas"><canvas role="img" aria-label="50% had medical debt, 56% delayed care, 64% delayed medications" data-bars='{"src":"d-ark","h":1,"unit":"%"}'></canvas></div>
+            </figure>
+          </div>
+        </div>
+        <script type="application/json" id="d-ark">{"labels":["Medical debt","Delayed care","Delayed meds"],"sets":[{"label":"Share","data":[50,56,64]}]}</script>
+        <div class="x-grid x-grid--2 x-reveal">
+          <div class="x-panel"><p class="x-label">H.R.1 (2025)</p><p class="x-body">CBO/CRS: the law adds <strong class="x-amber">10.0M</strong> uninsured by 2034; work requirements alone <strong>5.3M</strong>.</p></div>
+          <div class="x-panel"><p class="x-label">California dates</p><p class="x-body">Immigrant-eligibility changes <strong>Oct 1, 2026</strong> · work requirements <strong>Jan 1, 2027</strong> (DHCS has asked CMS for a 6-month delay) · six-month renewals <strong>Mar 1, 2027</strong>.</p></div>
+        </div>
+        <p class="x-src x-reveal">Sources: Sommers et al. (2019, 2020); CBO (2025); CRS (2025); DHCS (2026f).</p>
+      </section>
+
+      <!-- 17 -->
+      <section class="x-slide">
+        <p class="x-eyebrow x-reveal">Section · Navigation burden</p>
+        <h2 class="x-reveal">Help exists — but people must find it, qualify, get there, and keep up.</h2>
+        <figure class="x-band x-reveal"><img src="valley-bus-stop.png" alt="A rural Central Valley bus stop" /></figure>
+        <div class="x-grid x-grid--2 x-reveal">
+          <div class="x-card">
+            <figure class="chart">
+              <figcaption class="chart__cap">Missouri 2-1-1: from referral to help<small>n = 1,235, % of callers · help ranged from 17% (housing) to 67% (food)</small></figcaption>
+              <div class="chart__canvas"><canvas role="img" aria-label="93% remembered a referral, 91% tried, 82% reached one, 36% got help" data-funnel='{"src":"d-211","unit":"%"}'></canvas></div>
+            </figure>
+          </div>
+          <div style="display:grid;gap:10px">
+            <div class="x-panel"><p class="x-label">Duke / NCCARE360</p><p class="x-body">The platform “closed” <strong>99% vs 93%</strong> of referrals, but actually connected <strong class="x-amber">65% vs 38%</strong>.</p></div>
+            <div class="x-panel"><p class="x-label">CMS AHC</p><p class="x-body">More than half had no needs resolved; navigators couldn't track which organizations had capacity.</p></div>
+            <div class="x-panel"><p class="x-label">Barriers</p><p class="x-body">Transportation: 3.6M miss care · health literacy: 36% basic or below · broadband 54% under $30K vs 94% at $100K+ · 34% of low-income adults smartphone-only.</p></div>
+          </div>
+        </div>
+        <script type="application/json" id="d-211">{"labels":["Remembered a referral","Tried","Reached one","Got help"],"sets":[{"label":"Callers","data":[93,91,82,36]}]}</script>
+        <p class="x-src x-reveal">Sources: Boyum et al. (2016); Johnson et al. (2024); RTI International (2026a); Wolfe et al. (2020); Kutner et al. (2006); McClain &amp; Bishop (2026).</p>
+      </section>
+
+      <!-- 18 -->
+      <section class="x-slide">
+        <p class="x-eyebrow x-reveal">What works</p>
+        <h2 class="x-reveal">Navigation and simpler forms pay for themselves.</h2>
+        <div class="x-grid x-reveal">
+          <div class="x-panel"><p class="x-label">Freeman · Harlem 1990</p><p class="x-fig"><span data-count="70" data-suffix="%">0</span><small>5-year survival, up from 39%; early stage 6% → 41% (screening + navigation, before/after)</small></p></div>
+          <div class="x-panel"><p class="x-label">CHW IMPaCT RCT</p><p class="x-fig">$<span data-count="2.47" data-dec="2">0</span><small>returned per Medicaid dollar (Kangovi 2020)</small></p></div>
+          <div class="x-panel"><p class="x-label">CMS AHC navigation</p><p class="x-fig">&gt;$<span data-count="200">0</span>M<small>net savings; costs −3% Medicaid, −4% Medicare</small></p></div>
+          <div class="x-panel"><p class="x-label">Michigan form redesign</p><p class="x-fig"><span data-count="94" data-suffix="%">0</span><small>completion, up from 72%; time 40 → 16 min</small></p></div>
+          <div class="x-panel"><p class="x-label">Medi-Cal auto-renewals</p><p class="x-fig"><span data-count="63" data-suffix="%">0</span><small>up from 31%</small></p></div>
+          <div class="x-panel"><p class="x-label">CalAIM Community Supports</p><p class="x-fig"><span data-count="10">0</span> of 12<small>showed net cost reductions (e.g., housing deposits −15.2%)</small></p></div>
+        </div>
+        <p class="x-src x-reveal">Sources: Freeman (2006); Freeman &amp; Rodriguez (2011); Kangovi et al. (2020); RTI International (2026a); OIRA (2023); DHCS (2026e).</p>
+      </section>
+
+      <!-- 19 -->
+      <section class="x-slide">
+        <p class="x-eyebrow x-reveal">Home turf · Stanislaus &amp; Merced</p>
+        <h2 class="x-reveal">Merced is poorer, yet reaches <span class="x-amber">3.6×</span> more members with care management.</h2>
+        <div class="x-grid x-grid--2 x-reveal" style="grid-template-columns: minmax(0, 3fr) minmax(240px, 2fr)">
+          <div class="x-panel" style="overflow-x:auto">
+            <table class="x-table">
+              <thead><tr><th>Measure</th><th>Stanislaus</th><th>Merced</th><th>California</th></tr></thead>
+              <tbody>
+                <tr><td>Poverty, 2024</td><td>14.2%</td><td>18.4%</td><td>11.8%</td></tr>
+                <tr><td>Life expectancy, 2021–23 (US 77.6)</td><td>75.9</td><td>76.8</td><td>79.7</td></tr>
+                <tr><td>Food insecurity, 2023</td><td>14.2%</td><td>17.7%</td><td>13.7%</td></tr>
+                <tr><td>On Medi-Cal, Jan 2026</td><td>44.4%</td><td>49.5%</td><td>35.4%</td></tr>
+                <tr><td>Children on Medi-Cal</td><td>59%</td><td>69%</td><td>50.9%</td></tr>
+                <tr><td>ECM enrollment, 2025</td><td>2.82% <small>(23/58)</small></td><td>10.19% <small>(1/58)</small></td><td>~2.5%</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="x-card">
+            <figure class="chart">
+              <figcaption class="chart__cap">Community Supports services<small>Per 10,000 members · county rank of 58</small></figcaption>
+              <div class="chart__canvas"><canvas role="img" aria-label="Stanislaus 295 (rank 49), Merced 2,357 (rank 3), California about 592" data-bars='{"src":"d-cs","hi":1,"dec":0}'></canvas></div>
+            </figure>
+          </div>
+        </div>
+        <script type="application/json" id="d-cs">{"labels":["Stanislaus (#49)","Merced (#3)","California (~)"],"sets":[{"label":"Services per 10,000","data":[295,2357,592]}]}</script>
+        <p class="x-body x-reveal">Navigation capacity, not need, explains the gap.</p>
+        <p class="x-src x-reveal">Sources: Census SAIPE (2025); CHR&amp;R (2026); DHCS (2026a, 2026b). Data: data-county-comparison.csv.</p>
+      </section>
+
+      <!-- 20 -->
+      <section class="x-slide">
+        <p class="x-eyebrow x-reveal">ZipShift Navigator</p>
+        <h2 class="x-reveal">Build for the person holding the paper.</h2>
+        <figure class="x-band x-reveal"><img src="navigator-hands.png" alt="A navigator's hands guiding someone through a form" /></figure>
+        <div class="x-grid x-reveal">
+          <div class="x-panel"><p class="x-label">1 · Find</p><p class="x-body">One place, plain language, 5th-grade reading level, many languages.</p></div>
+          <div class="x-panel"><p class="x-label">2 · Qualify</p><p class="x-body">Pre-screen eligibility and list the documents needed up front.</p></div>
+          <div class="x-panel"><p class="x-label">3 · Get there</p><p class="x-body">Transit, hours, phone/text, offline-friendly on smartphones.</p></div>
+          <div class="x-panel"><p class="x-label">4 · Keep it</p><p class="x-body">Renewal reminders, warm handoffs; measure “successful connection,” not “closed”.</p></div>
+        </div>
+        <p class="x-reveal"><a class="x-tag x-tag--amber" href="https://github.com/mcochranca-code/zipshift-navigator" target="_blank" rel="noopener">github.com/mcochranca-code/zipshift-navigator</a></p>
+      </section>
+
+      <!-- 21 -->
+      <section class="x-slide">
+        <p class="x-eyebrow x-reveal">References</p>
+        <h2 class="x-reveal">Sources, APA 7</h2>
+        <p class="x-note x-reveal">Compiled from four research briefs and checked against Crossref, Europe PMC, PubMed and primary documents on November 8, 2026. Entries marked “[details unverified]” could not be fully confirmed.</p>
+        <div class="x-panel x-refs" id="bib" tabindex="0" aria-label="Reference list"></div>
+        <script type="text/plain" id="bib-src">
+American Public Health Association. (n.d.). *Community health workers* [Member section page]. <https://www.apha.org/apha-communities/member-sections/community-health-workers>
+
+Arias, E., Xu, J., & Tejada-Vera, B. (2026). *United States life tables, 2024* (National Vital Statistics Reports, Vol. 75, No. 5). National Center for Health Statistics. <https://www.cdc.gov/nchs/data/nvsr/nvsr75/nvsr75-05.pdf>
+
+Ashe, J. J., Baker, M. C., Alvarado, C. S., & Alberti, P. M. (2023). Screening for health-related social needs and collaboration with external partners among US hospitals. *JAMA Network Open, 6*(8), e2330228. <https://doi.org/10.1001/jamanetworkopen.2023.30228>
+
+Bijou, C., & Shrider, E. A. (2026). *Poverty in the United States: 2025* (Current Population Reports P60-290). U.S. Census Bureau. <https://www.census.gov/library/publications/2026/demo/p60-290.html> [Tables: <https://www.census.gov/data/tables/2026/demo/income-poverty/p60-290.html>]
+
+Billioux, A., Verlander, K., Anthony, S., & Alley, D. (2017). Standardized screening for health-related social needs in clinical settings: The Accountable Health Communities screening tool. *NAM Perspectives, 7*(5). <https://doi.org/10.31478/201705b>
+
+Booske, B. C., Athens, J. K., Kindig, D. A., Park, H., & Remington, P. L. (2010). *Different perspectives for assigning weights to determinants of health* (County Health Rankings Working Paper). University of Wisconsin Population Health Institute. <https://www.countyhealthrankings.org/sites/default/files/differentPerspectivesForAssigningWeightsToDeterminantsOfHealth.pdf>
+
+Boyum, S., Kreuter, M. W., McQueen, A., Thompson, T., & Greer, R. (2016). Getting help from 2-1-1: A statewide study of referral outcomes. *Journal of Social Service Research, 42*(3), 402–411. <https://doi.org/10.1080/01488376.2015.1109576>
+
+Brennan Center for Justice. (2006). *Citizens without proof: A survey of Americans' possession of documentary proof of citizenship and photo identification*. <https://www.brennancenter.org/sites/default/files/legacy/d/download_file_39242.pdf>
+
+Brodkin, E. Z., & Majmundar, M. (2010). Administrative exclusion: Organizations and the hidden costs of welfare claiming. *Journal of Public Administration Research and Theory, 20*(4), 827–848. <https://doi.org/10.1093/jopart/mup046>
+
+Brown, T. M., & Fee, E. (2006). Rudolf Carl Virchow: Medical scientist, social reformer, role model. *American Journal of Public Health, 96*(12), 2104–2105. <https://doi.org/10.2105/AJPH.2005.078436>
+
+Bunch, L. N., & Ketema, H. (2026). *Health insurance coverage in the United States: 2025* (Current Population Reports P60-291). U.S. Census Bureau. <https://www.census.gov/library/publications/2026/demo/p60-291.html>
+
+California Department of Health Care Services. (n.d.). *Medi-Cal peer support services*. Retrieved November 8, 2026, from <https://www.dhcs.ca.gov/services/medi-cal-peer-support-services/>
+
+California Department of Health Care Services. (2024). *Medi-Cal continuous coverage unwinding: Procedural disenrollment survey—Combined findings from six months of surveys*. <https://www.dhcs.ca.gov/wp-content/uploads/2025/10/Medi-Cal-Disenrollment-Survey-Final-2024.pdf>
+
+California Department of Health Care Services. (2026a). *County penetration rates for Medi-Cal certified eligibles by age group, January 2026*. <https://www.dhcs.ca.gov/dataandstats/statistics/Documents/Medi-Cal-Eligibles-County-Populations-JAN2026.pdf>
+
+California Department of Health Care Services. (2026b). *ECM and Community Supports quarterly implementation report* (data through December 31, 2025; updated August 2026) [Data tables, ArcGIS FeatureServer layers 13, 14, 22, 35, 44]. <https://services7.arcgis.com/7MUwsS9z05YumJRZ/arcgis/rest/services/ECM_Community_Support_Data_Tables_for_Quarterly_Implementation_report/FeatureServer>
+
+California Department of Health Care Services. (2026c). *Medi-Cal community health worker (CHW) utilization data* (updated August 2026). <https://www.dhcs.ca.gov/wp-content/uploads/2026/08/CHW-Utilization-Data-3.pdf>
+
+California Department of Health Care Services. (2026d). *Medi-Cal monthly eligible fast facts, June 2026 as of the MEDS cut-off for September 2026*. <https://www.dhcs.ca.gov/wp-content/uploads/2026/09/Fast-Facts.pdf>
+
+California Department of Health Care Services. (2026e, June 26). *New data reinforce California's commitment to whole-person Medi-Cal care* [Press release]. <https://www.dhcs.ca.gov/news/new-data-reinforce-californias-commitment-to-whole-person-medi-cal-care>
+
+California Department of Health Care Services. (2026f, October 29). *Tracking federal impact: Medi-Cal eligibility*. <https://www.dhcs.ca.gov/tracking-federal-impact-medi-cal-eligibility/>
+
+California Health Care Foundation. (2024, August 14; updated 2024, November 18). *Key takeaways from Medi-Cal redetermination data*. <https://www.chcf.org/resource/2024/08/14/key-takeaways-medi-cal-redetermination-data-june-august-2023/>
+
+California Health Care Foundation. (2026a). *CHW Medi-Cal benefit frequently asked questions*. <https://www.chcf.org/wp-content/uploads/2026/05/CHWMediCalBenefitFAQ.pdf>
+
+California Health Care Foundation. (2026b, July 24). *What data tell us about the 730,000 Californians who have left Medi-Cal*. <https://www.chcf.org/blog/2026/07/24/what-data-tell-us-about-730000-californians-who-have-left-medi-cal/>
+
+California Public Utilities Commission. (n.d.). *2-1-1 information services*. Retrieved November 8, 2026, from <https://www.cpuc.ca.gov/industries-and-topics/internet-and-phone/211-information-services>
+
+Carter, C. (2026). *Health insurance coverage by state: 2025* (American Community Survey Brief ACSBR-027). U.S. Census Bureau. <https://www.census.gov/library/publications/2026/acs/acsbr-027.html>
+
+Cartier, Y., Fichtenberg, C., & Gottlieb, L. M. (2020). Implementing community resource referral technology: Facilitators and barriers described by early adopters. *Health Affairs, 39*(4), 662–669. <https://doi.org/10.1377/hlthaff.2019.01588>
+
+Centers for Medicare & Medicaid Services. (n.d.). *The AHC health-related social needs screening tool*. <https://www.cms.gov/priorities/innovation/files/worksheets/ahcm-screeningtool.pdf>
+
+Centers for Medicare & Medicaid Services. (2022, August 1). *FY 2023 Hospital Inpatient Prospective Payment System (IPPS) and Long-Term Care Hospital Prospective Payment System (LTCH PPS) final rule—CMS-1771-F* [Fact sheet]. <https://www.cms.gov/newsroom/fact-sheets/fy-2023-hospital-inpatient-prospective-payment-system-ipps-and-long-term-care-hospital-prospective>
+
+Centers for Medicare & Medicaid Services. (2023). *Accountable Health Communities (AHC) Model evaluation: Second evaluation report*. <https://www.cms.gov/priorities/innovation/data-and-reports/2023/ahc-second-eval-rpt>
+
+Centers for Medicare & Medicaid Services. (2025, August 4). Medicare program; Hospital inpatient prospective payment systems for acute care hospitals (IPPS) and the long-term care hospital prospective payment system and policy changes and fiscal year (FY) 2026 rates… [Final rule]. *Federal Register*. <https://www.federalregister.gov/documents/2025/08/04/2025-14681/medicare-program-hospital-inpatient-prospective-payment-systems-for-acute-care-hospitals-ipps-and>
+
+Chang, W., & Richwine, C. (2023). *Social needs screening among non-federal acute care hospitals, 2022* (ONC Data Brief No. 67). Office of the National Coordinator for Health Information Technology. <https://healthit.gov/data/data-briefs/social-needs-screening-among-non-federal-acute-care-hospitals-2022/>
+
+Chetty, R., Stepner, M., Abraham, S., Lin, S., Scuderi, B., Turner, N., Bergeron, A., & Cutler, D. (2016). The association between income and life expectancy in the United States, 2001–2014. *JAMA, 315*(16), 1750–1766. <https://doi.org/10.1001/jama.2016.4226> [details unverified]
+
+Christensen, J., Aarøe, L., Baekgaard, M., Herd, P., & Moynihan, D. P. (2020). Human capital and administrative burden: The role of cognitive resources in citizen-state interactions. *Public Administration Review, 80*(1), 127–136. <https://doi.org/10.1111/puar.13134>
+
+Cole, M. B., Nguyen, K. H., Byhoff, E., & Murray, G. F. (2022). Screening for social risk at federally qualified health centers: A national study. *American Journal of Preventive Medicine, 62*(5), 670–678. <https://doi.org/10.1016/j.amepre.2021.11.008>
+
+Commission on Social Determinants of Health. (2008). *Closing the gap in a generation: Health equity through action on the social determinants of health. Final report of the Commission on Social Determinants of Health* (WHO/IER/CSDH/08.1). World Health Organization. <https://www.who.int/publications/i/item/WHO-IER-CSDH-08.1>
+
+Congressional Budget Office. (2025, October 28). *Supplemental cost estimate: Medicaid provisions of P.L. 119-21*. <https://www.cbo.gov/system/files/2025-10/PL-119-21-Medicaid%20_0.pdf>
+
+Congressional Research Service. (2025, August 18). *Health provisions in P.L. 119-21, the FY2025 reconciliation law* (CRS Report No. R48633). <https://www.congress.gov/crs-product/R48633>
+
+Congressional Research Service. (2026, September 16). *Poverty in 2025* (CRS Insight IN12737). <https://www.congress.gov/crs-product/IN12737>
+
+County Health Rankings & Roadmaps. (n.d.). *The evolution of the model*. University of Wisconsin Population Health Institute. Retrieved November 8, 2026, from <https://www.countyhealthrankings.org/health-data/methodology-and-sources/methods/the-evolution-of-the-model>
+
+County Health Rankings & Roadmaps. (2019, July 12). *Is the County Health Rankings model right or wrong?* University of Wisconsin Population Health Institute. <https://www.countyhealthrankings.org/findings-and-insights/blog/is-the-county-health-rankings-model-right-or-wrong>
+
+County Health Rankings & Roadmaps. (2026). *Analytic data: Supplemental data release (March 25, 2026)* [Data set]. University of Wisconsin Population Health Institute. <https://www.countyhealthrankings.org/sites/default/files/media/document/analytic_supplement_20260325%5B1%5D.csv>
+
+Cunnyngham, K. (2025). *Reaching those in need: Estimates of state Supplemental Nutrition Assistance Program participation rates in 2022*. U.S. Department of Agriculture, Food and Nutrition Service. <https://fns-prod.azureedge.us/sites/default/files/resource-files/ear-snap-Reaching-Those-in-Need-2022.pdf>
+
+Dahlgren, G., & Whitehead, M. (1991). *Policies and strategies to promote social equity in health* (Background document to WHO – Strategy paper for Europe; republished 2007 as Arbetsrapport 2007:14). Institute for Futures Studies. <https://www.iffs.se/media/1326/20080109110739filmZ8UVQv2wQFShMRF6cuT.pdf>
+
+Dahlgren, G., & Whitehead, M. (2021). The Dahlgren-Whitehead model of health determinants: 30 years on and still chasing rainbows. *Public Health, 199*, 20–24. <https://doi.org/10.1016/j.puhe.2021.08.009>
+
+Department of Health and Social Security. (1980). *Inequalities in health: Report of a research working group* [The Black Report]. Reproduced by the Socialist Health Association. <https://sochealth.co.uk/public-health-and-wellbeing/poverty-and-inequality/the-black-report-1980/black-report-chapter-10-summary-and-recommendations/>
+
+Du Bois, W. E. B. (1899). *The Philadelphia Negro: A social study* (Publications of the University of Pennsylvania, Series in Political Economy and Public Law, No. 14). University of Pennsylvania / Ginn & Co. <https://archive.org/details/philadelphianegr00dubo>
+
+Du Bois, W. E. B. (2003). The health and physique of the Negro American. *American Journal of Public Health, 93*(2), 272–276. <https://doi.org/10.2105/AJPH.93.2.272> (Original work published 1906)
+
+Engels, F. (n.d.). *The condition of the working-class in England in 1844* (F. K. Wischnewetzky, Trans.). Project Gutenberg. <https://www.gutenberg.org/files/17306/17306-h/17306-h.htm> (Original work published 1845)
+
+Exec. Order No. 14058, 86 Fed. Reg. 71357 (December 16, 2021). <https://www.federalregister.gov/documents/2021/12/16/2021-27380/transforming-federal-customer-experience-and-service-delivery-to-rebuild-trust-in-government>
+
+Feldmeth, G., Terry, A., White, Z., & Ahmadi-Montecalvo, H. (2025). Context matters: Findings from a qualitative analysis of social care referral case resolution notes. *Health Services Research, 60*(S1). <https://doi.org/10.1111/1475-6773.14519>
+
+Fichtenberg, C., Cartier, Y., Burnett, J., Ricks-Stephen, C., & Paulson, G. (2023). If you build it, they may not come: Understanding factors influencing use of a community resource referral technology. *Health Services Research, 59*(S1). <https://doi.org/10.1111/1475-6773.14234>
+
+Freeman, H. P. (2006). Patient navigation: A community based strategy to reduce cancer disparities. *Journal of Urban Health, 83*(2), 139–141. <https://doi.org/10.1007/s11524-006-9030-0>
+
+Freeman, H. P., & Rodriguez, R. L. (2011). History and principles of patient navigation. *Cancer, 117*(S15), 3537–3540. <https://doi.org/10.1002/cncr.26262> [Author manuscript: <https://pmc.ncbi.nlm.nih.gov/articles/PMC4557777>]
+
+Goldberger, J., Wheeler, G. A., & Sydenstricker, E. (1920). A study of the relation of family income and other economic factors to pellagra incidence in seven cotton-mill villages of South Carolina in 1916. *Public Health Reports, 35*(46), 2673–2714. <https://doi.org/10.2307/4575780> [details unverified]
+
+Guadamuz, J. S., Wilder, J. R., Mouslim, M. C., Zenk, S. N., Alexander, G. C., & Qato, D. M. (2021). Fewer pharmacies in Black and Hispanic/Latino neighborhoods compared with White or diverse neighborhoods, 2007–15. *Health Affairs, 40*(5), 802–811. <https://doi.org/10.1377/hlthaff.2020.01699>
+
+Health Resources and Services Administration. (2026). *Designated health professional shortage areas statistics: Fourth quarter of fiscal year 2026* (as of September 30, 2026) and HPSA detail data downloads. <https://data.hrsa.gov/Default/GenerateHPSAQuarterlyReport>; <https://data.hrsa.gov/data/download?data=SHORT>
+
+Herd, P., Hoynes, H., Michener, J., & Moynihan, D. (2023). Introduction: Administrative burden as a mechanism of inequality in policy implementation. *RSF: The Russell Sage Foundation Journal of the Social Sciences, 9*(5), 1–30. <https://doi.org/10.7758/RSF.2023.9.5.01>
+
+Herd, P., & Moynihan, D. P. (2018). *Administrative burden: Policymaking by other means*. Russell Sage Foundation. <https://doi.org/10.7758/9781610448789> [Introduction: <https://www.russellsage.org/sites/default/files/Herd-Moynihan-introduction.pdf>]
+
+Hood, C. M., Gennuso, K. P., Swain, G. R., & Catlin, B. B. (2016). County Health Rankings: Relationships between determinant factors and health outcomes. *American Journal of Preventive Medicine, 50*(2), 129–135. <https://doi.org/10.1016/j.amepre.2015.08.024>
+
+Internal Revenue Service. (2026, August 19). *EITC participation rate by state*. <https://www.irs.gov/tax-professionals/eitc-central/eitc-participation-rate-by-state>
+
+Johnson, F. S., McPeek Hinz, E. R., Regan, D., Nohria, R., Moon, G., & Spratt, S. E. (2024). Measures of referral vs receipt of social services among patients with health-related social needs. *JAMA Network Open, 7*(4), e247021. <https://doi.org/10.1001/jamanetworkopen.2024.7021>
+
+Joint Center for Housing Studies of Harvard University. (2026). *The state of the nation's housing 2026: Key facts*. <https://www.jchs.harvard.edu/sites/default/files/interactive-item/files/Harvard_JCHS_State_Nations_Housing_2026_Key_Facts_0.pdf>
+
+Kangovi, S., Mitra, N., Grande, D., Long, J. A., & Asch, D. A. (2020). Evidence-based community health worker program addresses unmet social needs and generates positive return on investment. *Health Affairs, 39*(2), 207–213. <https://doi.org/10.1377/hlthaff.2019.00981>
+
+Kangovi, S., Mitra, N., Grande, D., White, M. L., McCollum, S., Sellman, J., Shannon, R. P., & Long, J. A. (2014). Patient-centered community health worker intervention to improve posthospital outcomes: A randomized clinical trial. *JAMA Internal Medicine, 174*(4), 535–543. <https://doi.org/10.1001/jamainternmed.2013.14327>
+
+Kangovi, S., Mitra, N., Norton, L., Harte, R., Zhao, X., Carter, T., Grande, D., & Long, J. A. (2018). Effect of community health worker support on clinical outcomes of low-income patients across primary care facilities: A randomized clinical trial. *JAMA Internal Medicine, 178*(12), 1635–1643. <https://doi.org/10.1001/jamainternmed.2018.4630>
+
+Kessler, C., Bryant, A., Munkacsy, K., & Gray, K. (2024). *National- and state-level estimates of WIC eligibility and WIC program reach in 2022 (Summary)*. U.S. Department of Agriculture, Food and Nutrition Service. <https://fns-prod.azureedge.us/sites/default/files/resource-files/wic-eer-2022-summary.pdf>
+
+Kochanek, K. D., Murphy, S. L., Xu, J., & Arias, E. (2024). *Mortality in the United States, 2022* (NCHS Data Brief No. 492). National Center for Health Statistics. <https://www.cdc.gov/nchs/data/databriefs/db492.pdf>
+
+Kutner, M., Greenberg, E., Jin, Y., & Paulsen, C. (2006). *The health literacy of America's adults: Results from the 2003 National Assessment of Adult Literacy* (NCES 2006-483). U.S. Department of Education, National Center for Education Statistics. <https://nces.ed.gov/pubs2006/2006483.pdf>
+
+Lalonde, M. (1974). *A new perspective on the health of Canadians: A working document*. Government of Canada. <https://www.phac-aspc.gc.ca/ph-sp/pdf/perspect-eng.pdf>
+
+Latino Coalition for a Healthy California. (2025, March 12). *Assemblymember Liz Ortega introduces AB 403 to shine a light on gaps in access to community health worker Medi-Cal services*. <https://www.lchc.org/2025/03/12/assemblymember-liz-ortega-introduces-ab-403-to-shine-a-light-on-gaps-in-access-to-community-health-worker-medi-cal-services/>
+
+Legislative Analyst's Office. (2026). *The 2026-27 budget: Medi-Cal analysis*. <https://lao.ca.gov/Publications/Report/5146>
+
+Link, B. G., & Phelan, J. (1995). Social conditions as fundamental causes of disease. *Journal of Health and Social Behavior, 35*(Extra Issue), 80–94. <https://doi.org/10.2307/2626958>
+
+Lowrey, A. (2021, July 27). The time tax: Why is so much American bureaucracy left to average citizens? *The Atlantic*. <https://www.theatlantic.com/politics/archive/2021/07/how-government-learned-waste-your-time-tax/619568/> [Authorized repost: <https://www.route-fifty.com/management/2021/07/time-tax/184098>]
+
+Lucas, J. W., & Villarroel, M. A. (2022). *Telemedicine use among adults: United States, 2021* (NCHS Data Brief No. 445). National Center for Health Statistics. <https://doi.org/10.15620/cdc:121435>
+
+Mackenbach, J. P. (2009). Politics is nothing but medicine at a larger scale: Reflections on public health's biggest idea. *Journal of Epidemiology and Community Health, 63*(3), 181–184. <https://doi.org/10.1136/jech.2008.077032>
+
+Mair, F. S., & May, C. R. (2014). Thinking about the burden of treatment. *BMJ, 349*, g6680. <https://doi.org/10.1136/bmj.g6680>
+
+Mani, A., Mullainathan, S., Shafir, E., & Zhao, J. (2013). Poverty impedes cognitive function. *Science, 341*(6149), 976–980. <https://doi.org/10.1126/science.1238041> [Plain-language summary: <https://www.princeton.edu/news/2013/08/29/poor-concentration-poverty-reduces-brainpower-needed-navigating-other-areas-life>]
+
+Marks, H. M. (2003). Epidemiologists explain pellagra: Gender, race, and political economy in the work of Edgar Sydenstricker. *Journal of the History of Medicine and Allied Sciences, 58*(1), 34–55. <https://doi.org/10.1093/jhmas/58.1.34>
+
+Marmot, M., Allen, J., Boyce, T., Goldblatt, P., & Morrison, J. (2020). *Health equity in England: The Marmot Review 10 years on*. Institute of Health Equity / The Health Foundation. <https://www.instituteofhealthequity.org/resources-reports/marmot-review-10-years-on>
+
+Marmot, M., Friel, S., Bell, R., Houweling, T. A. J., & Taylor, S. (2008). Closing the gap in a generation: Health equity through action on the social determinants of health. *The Lancet, 372*(9650), 1661–1669. <https://doi.org/10.1016/S0140-6736(08)61690-6>
+
+Marmot, M., Goldblatt, P., Allen, J., et al. (2010). *Fair society, healthy lives: The Marmot Review*. Institute of Health Equity. <https://www.instituteofhealthequity.org/resources-reports/fair-society-healthy-lives-the-marmot-review> [details unverified]
+
+Marmot, M. G., Shipley, M. J., & Rose, G. (1984). Inequalities in death—Specific explanations of a general pattern? *The Lancet, 323*(8384), 1003–1006. <https://doi.org/10.1016/S0140-6736(84)92337-7>
+
+Marmot, M. G., Stansfeld, S., Patel, C., North, F., Head, J., White, I., Brunner, E., Feeney, A., … (1991). Health inequalities among British civil servants: The Whitehall II study. *The Lancet, 337*(8754), 1387–1393. <https://doi.org/10.1016/0140-6736(91)93068-K> [details unverified]
+
+May, C., Montori, V. M., & Mair, F. S. (2009). We need minimally disruptive medicine. *BMJ, 339*, b2803. <https://doi.org/10.1136/bmj.b2803>
+
+May, C. R., Eton, D. T., Boehmer, K., Gallacher, K., Hunt, K., MacDonald, S., Mair, F. S., May, C. M., Montori, V. M., Richardson, A., Rogers, A. E., & Shippee, N. (2014). Rethinking the patient: Using Burden of Treatment Theory to understand the changing dynamics of illness. *BMC Health Services Research, 14*, 281. <https://doi.org/10.1186/1472-6963-14-281>
+
+McClain, C., & Bishop, W. (2026, January 8). *What we know about internet use, smartphone ownership and digital divides in the U.S.* Pew Research Center. <https://www.pewresearch.org/short-reads/2026/01/08/internet-use-smartphone-ownership-digital-divides-in-u-s/>
+
+McGinnis, J. M., & Foege, W. H. (1993). Actual causes of death in the United States. *JAMA, 270*(18), 2207–2212. <https://doi.org/10.1001/jama.1993.03510180077038>
+
+McGinnis, J. M., Williams-Russo, P., & Knickman, J. R. (2002). The case for more active policy attention to health promotion. *Health Affairs, 21*(2), 78–93. <https://doi.org/10.1377/hlthaff.21.2.78>
+
+Moynihan, D., Herd, P., & Harvey, H. (2015). Administrative burden: Learning, psychological, and compliance costs in citizen-state interactions. *Journal of Public Administration Research and Theory, 25*(1), 43–69. <https://doi.org/10.1093/jopart/muu009>
+
+Murphy, S. L., Kochanek, K. D., Xu, J., & Arias, E. (2021). *Mortality in the United States, 2020* (NCHS Data Brief No. 427). National Center for Health Statistics. <https://www.cdc.gov/nchs/products/databriefs/db427.htm>
+
+Nardone, A., Casey, J. A., Morello-Frosch, R., Mujahid, M., Balmes, J. R., & Thakur, N. (2020). Associations between historical residential redlining and current age-adjusted rates of emergency department visits due to asthma across eight cities in California: An ecological study. *The Lancet Planetary Health, 4*(1), e24–e31. <https://doi.org/10.1016/S2542-5196(19)30241-4>
+
+Nardone, A., Rudolph, K. E., Morello-Frosch, R., & Casey, J. A. (2021). Redlines and greenspace: The relationship between historical redlining and 2010 greenspace across the United States. *Environmental Health Perspectives, 129*(1), Article 017006. <https://doi.org/10.1289/EHP7495>
+
+National Association of Community Health Centers. (n.d.). *PRAPARE® frequently asked questions*. Retrieved November 8, 2026, from <https://prapare.org/faq>
+
+National Law Center on Homelessness & Poverty. (2004). *Photo identification barriers faced by homeless persons: The impact of September 11*. <https://homelesslaw.org/wp-content/uploads/2019/03/Photo-ID-Barriers-Faced-by-Homeless-Persons-2004.pdf>
+
+Nguyen, K. H., Giron, N. C., & Cole, M. B. (2024). National prevalence of social risk factors at federally qualified health centers. *JAMA Internal Medicine, 184*(8), 980. <https://doi.org/10.1001/jamainternmed.2024.1881> [details unverified]
+
+Office of Disease Prevention and Health Promotion. (n.d.). *Social determinants of health*. Healthy People 2030, U.S. Department of Health and Human Services. Retrieved November 8, 2026, from <https://odphp.health.gov/healthypeople/priority-areas/social-determinants-health>
+
+Office of Disease Prevention and Health Promotion. (2022). *Healthy People 2020 in review: Prioritizing social determinants of health* [Fact sheet]. U.S. Department of Health and Human Services. <https://odphp.health.gov/sites/default/files/2022-11/HP2020-PrioritizingSocialDeterminantsofHealth%2508c.pdf>
+
+Office of Information and Regulatory Affairs. (2023). *Tackling the time tax: How the federal government is reducing burdens to accessing critical benefits and services*. Office of Management and Budget. <https://bidenwhitehouse.archives.gov/wp-content/uploads/2023/07/OIRA-2023-Burden-Reduction-Report.pdf>
+
+Office of Management and Budget. (2022). *Improving access to public benefits programs through the Paperwork Reduction Act* (M-22-10). <https://bidenwhitehouse.archives.gov/wp-content/uploads/2022/04/M-22-10.pdf>
+
+Office of Management and Budget, Office of Information and Regulatory Affairs. (2022). *Strategies for reducing administrative burden in public benefit and service programs*. <https://bidenwhitehouse.archives.gov/wp-content/uploads/2022/12/BurdenReductionStrategies.pdf>
+
+Patient Navigator Outreach and Chronic Disease Prevention Act of 2005, Pub. L. No. 109-18, 119 Stat. 340 (2005). <https://www.govinfo.gov/content/pkg/PLAW-109publ18/pdf/PLAW-109publ18.pdf>
+
+Phelan, J. C., Link, B. G., & Tehranifar, P. (2010). Social conditions as fundamental causes of health inequalities: Theory, evidence, and policy implications. *Journal of Health and Social Behavior, 51*(1_suppl), S28–S40. <https://doi.org/10.1177/0022146510383498>
+
+Public Health Alliance of Southern California. (2022). *California Healthy Places Index 3.0: County layer* [Data set]. <https://services.arcgis.com/XG15cJAlne2vxtgt/arcgis/rest/services/HPI/FeatureServer/0> [Technical report: <https://files.healthyplacesindex.org/CA_HPI_3_Technical_Report_2022-09-20.pdf>]
+
+Quality Reporting Center. (2026). *Hospital IQR Program changes: Summary of FY 2026 IPPS/LTCH PPS final rule*. <https://qualityreportingcenter.com/globalassets/2026/01/iqr/04.-hiqr_summary-of-fy-2026-final-rule-program-changes_vfinal_508.pdf>
+
+Rabbitt, M. P., Reed-Jones, M., Hales, L. J., Suttles, S., & Burke, M. P. (2025). *Household food security in the United States in 2024* (Economic Research Report No. 358). U.S. Department of Agriculture, Economic Research Service. <https://www.ers.usda.gov/media/9161/err-358.pdf> [Data: <https://www.ers.usda.gov/topics/food-nutrition-assistance/food-security-in-the-us/key-statistics-graphics>]
+
+Remington, P. L., Catlin, B. B., & Gennuso, K. P. (2015). The County Health Rankings: Rationale and methods. *Population Health Metrics, 13*, Article 11. <https://doi.org/10.1186/s12963-015-0044-2>
+
+Renaud, J., McClellan, S. R., DePriest, K., Witgert, K., O'Connor, S., Abowd Johnson, K., Barolin, N., Gottlieb, L. M., De Marchis, E. H., Rojas-Smith, L., & Haber, S. G. (2023). Addressing health-related social needs via community resources: Lessons from Accountable Health Communities. *Health Affairs, 42*(6), 832–840. <https://doi.org/10.1377/hlthaff.2022.01507>
+
+Rhone, A., Williams, R., & Dicken, C. (2022). *Low-income and low-foodstore-access census tracts, 2015–19* (EIB-236). U.S. Department of Agriculture, Economic Research Service. <https://www.ers.usda.gov/media/9003/eib-236.pdf>
+
+Richwine, C., Patel, V., Everson, J., & Iott, B. (2024). The role of routine and structured social needs data collection in improving care in US hospitals. *Journal of the American Medical Informatics Association, 32*(1), 28–37. <https://doi.org/10.1093/jamia/ocae279>
+
+Rothschild, J. A., Novey, S. B., Morris, K., & Hanmer, M. J. (2024). *Who lacks ID in America today? An exploration of voter ID access, barriers, and knowledge*. Center for Democracy and Civic Engagement, University of Maryland. <https://cdce.umd.edu/sites/cdce.umd.edu/files/pubs/Voter%20ID%202023%20survey%20Key%20Results%20June%202024%20updatev2.pdf>
+
+RTI International. (2023). *Accountable Health Communities Model evaluation: Second evaluation report—Findings at a glance (2018–2021)*. Centers for Medicare & Medicaid Services. <https://www.cms.gov/priorities/innovation/data-and-reports/2023/ahc-second-eval-rpt-fg>
+
+RTI International. (2024). *Accountable Health Communities Model: Evaluation of 2018–2023—Findings at a glance* (Third evaluation report). Centers for Medicare & Medicaid Services. <https://www.cms.gov/priorities/innovation/data-and-reports/2024/ahc-3rd-eval-report-aag>
+
+RTI International. (2026a). *Accountable Health Communities (AHC) Model evaluation: Executive summary for the final report*. Centers for Medicare & Medicaid Services. <https://www.cms.gov/priorities/innovation/data-and-reports/2026/ahc-final-report-exec-sum>
+
+RTI International. (2026b). *Accountable Health Communities Model final evaluation (2018–2023): Findings at a glance*. Centers for Medicare & Medicaid Services. <https://www.cms.gov/priorities/innovation/data-and-reports/2026/ahc-final-report-aag>
+
+Sánchez, V. G. (2025, July 28). California looked to them to close health disparities, then it backpedaled. *KFF Health News*. <https://kffhealthnews.org/medicaid/california-community-health-workers-rollback-promotores-promotoras-hispanic/>
+
+Shrider, E. A., & Bijou, C. (2025). *Poverty in the United States: 2024* (Current Population Reports P60-287). U.S. Census Bureau. <https://www2.census.gov/library/publications/2025/demo/p60-287.pdf>
+
+Social Security Administration. (2026a). *Annual performance report, fiscal years 2025–2027*. <https://www.ssa.gov/agency/performance/materials/2026/SSA_FYs_2025-2027_Annual_Performance_Report.pdf>
+
+Social Security Administration. (2026b, October 23). *Social Security's digital-first strategy produces best performance in agency history* [Press release]. <https://www.ssa.gov/news/en/press/releases/2026-10-23.html>
+
+Sommers, B. D., Chen, L., Blendon, R. J., Orav, E. J., & Epstein, A. M. (2020). Medicaid work requirements in Arkansas: Two-year impacts on coverage, employment, and affordability of care. *Health Affairs, 39*(9), 1522–1530. <https://doi.org/10.1377/hlthaff.2020.00538>
+
+Sommers, B. D., Goldman, A. L., Blendon, R. J., Orav, E. J., & Epstein, A. M. (2019). Medicaid work requirements—Results from the first year in Arkansas. *New England Journal of Medicine, 381*(11), 1073–1082. <https://doi.org/10.1056/NEJMsr1901772>
+
+Sydenstricker, E. (1933). *Health and environment*. McGraw-Hill.
+
+Tolbert, J., & Corallo, B. (2024, September 18). *An examination of Medicaid renewal outcomes and enrollment changes at the end of the unwinding*. KFF. <https://www.kff.org/medicaid/an-examination-of-medicaid-renewal-outcomes-and-enrollment-changes-at-the-end-of-the-unwinding/>
+
+211 California. (2026). *211 California impact: California overview 2025*. <https://www.211california.org/impact-data>
+
+United Way Worldwide. (2025, March 26). *211 helpline data reveals most pressing U.S. community needs*. <https://www.unitedway.org/news/211-helpline-data-reveals-most-pressing-us-community-needs>
+
+United Way Worldwide. (2026, March 31). *Housing insecurity emerges as most pressing need across the U.S., new 211 data shows*. <https://www.unitedway.org/news/211-helpline-data-reveals-most-pressing-us-community-needs-0>
+
+Unrath, M. (2021). *Pushed out by paperwork: Why eligible Californians leave CalFresh* [Policy brief]. California Policy Lab. <https://www.capolicylab.org/wp-content/uploads/2021/02/Pushed-out-by-paperwork-why-eligible-Californians-leave-CalFresh.pdf>
+
+U.S. Bureau of Labor Statistics. (2026). Community health workers. In *Occupational outlook handbook*. <https://www.bls.gov/ooh/community-and-social-service/community-health-workers.htm>
+
+U.S. Census Bureau. (2025). *Small Area Income and Poverty Estimates (SAIPE): 2024 state and county estimates, California* [Data set]. <https://www2.census.gov/programs-surveys/saipe/datasets/2024/2024-state-and-county/est24-ca.txt>
+
+U.S. Census Bureau. (2026a, September 15). *Income, poverty and health insurance coverage in the United States: 2025* (Press Release CB26-151). <https://www.census.gov/newsroom/press-releases/2026/income-poverty-health-insurance-coverage.html>
+
+U.S. Census Bureau. (2026b). *QuickFacts: Stanislaus County, California; Merced County, California; California; United States*. Retrieved November 8, 2026, from <https://www.census.gov/quickfacts/fact/table/stanislauscountycalifornia,mercedcountycalifornia,CA,US/PST045224>
+
+U.S. Census Bureau. (2026c). *Small Area Health Insurance Estimates (SAHIE): 2024* [Data set]. <https://www2.census.gov/programs-surveys/sahie/datasets/time-series/estimates-acs/sahie-2024-csv.zip>
+
+U.S. Census Bureau. (2026d). *Table HI05_ACS. Health insurance coverage status and type of coverage by state and age for all persons: 2025* [Data set]. <https://www2.census.gov/programs-surveys/demo/tables/health-insurance/2026/acs-hi/hi05_acs.xlsx> [2019–2024 editions: same path with /2020/, /2022/–/2025/]
+
+U.S. Department of Agriculture. (2025, September 20). *USDA terminates redundant food insecurity survey* [Press release]. <https://www.usda.gov/about-usda/news/press-releases/2025/09/20/usda-terminates-redundant-food-insecurity-survey>
+
+U.S. Department of Housing and Urban Development. (2023). *The 2023 Annual Homelessness Assessment Report (AHAR) to Congress, Part 1*. <https://www.huduser.gov/portal/sites/default/files/pdf/2023-AHAR-Part-1.pdf>
+
+U.S. Department of Housing and Urban Development. (2024). *The 2024 Annual Homelessness Assessment Report (AHAR) to Congress, Part 1*. <https://www.huduser.gov/portal/sites/default/files/pdf/2024-AHAR-Part-1.pdf>
+
+U.S. Department of Housing and Urban Development. (2026). *The 2025 Annual Homelessness Assessment Report (AHAR) to Congress, Part 1: Point-in-time estimates of homelessness*. <https://www.huduser.gov/portal/sites/default/files/pdf/2025-AHAR-Part-1.pdf>
+
+U.S. Government Accountability Office. (2025). [Title not recorded in research notes] (GAO-25-107239). [details unverified]
+
+Virchow, R. C. (2006). Report on the typhus epidemic in Upper Silesia. *American Journal of Public Health, 96*(12), 2102–2105. <https://doi.org/10.2105/AJPH.96.12.2102> (Original work published 1848)
+
+Wallace, R., Hughes-Cromwick, P., Mull, H., & Khasnabis, S. (2005). Access to health care and nonemergency medical transportation: Two missing links. *Transportation Research Record, 1924*(1), 76–84. <https://doi.org/10.1177/0361198105192400110>
+
+White House, Office of the Press Secretary. (2005, June 29). *Statement on H.R. 1812, the "Patient Navigator Outreach and Chronic Disease Prevention Act of 2005."* <https://georgewbush-whitehouse.archives.gov/news/releases/2005/06/text/20050629-7.html>
+
+Wolfe, M. K., McDonald, N. C., & Holmes, G. M. (2020). Transportation barriers to health care in the United States: Findings from the National Health Interview Survey, 1997–2017. *American Journal of Public Health, 110*(6), 815–822. <https://doi.org/10.2105/AJPH.2020.305579>
+
+World Health Organization. (1978). *Declaration of Alma-Ata*. International Conference on Primary Health Care, Alma-Ata, USSR, 6–12 September 1978. <https://cdn.who.int/media/docs/default-source/documents/almaata-declaration-en.pdf>
+
+World Health Organization. (1986). *Ottawa Charter for Health Promotion*. <https://www.who.int/teams/health-promotion/enhanced-wellbeing/first-global-conference>
+
+Xu, J., Murphy, S. L., Kochanek, K. D., & Arias, E. (2026). *Mortality in the United States, 2024* (NCHS Data Brief No. 548). National Center for Health Statistics. <https://www.cdc.gov/nchs/products/databriefs/db548.htm>
+        </script>
+      </section>
+    </main>
+    <div class="x-chrome">
+      <button type="button" id="prev" aria-label="Previous slide">←</button>
+      <b><span id="cur">1</span>/<span id="tot">21</span></b>
+      <button type="button" id="next" aria-label="Next slide">→</button>
+    </div>
+    <script src="hark.js"></script>
+    <script src="chart.js"></script>
+    <script src="datalabels.js"></script>
+    <script src="hark-charts.js"></script>
+    <script>
+      (function () {
+        var deck = document.getElementById("deck");
+        var slides = [].slice.call(deck.querySelectorAll(".x-slide"));
+        var reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+        document.getElementById("tot").textContent = slides.length;
+        var cur = document.getElementById("cur"), prog = document.getElementById("prog");
+
+        function countUp(el) {
+          var to = parseFloat(el.getAttribute("data-count")),
+            dec = +(el.getAttribute("data-dec") || 0),
+            suf = el.getAttribute("data-suffix") || "",
+            pre = el.getAttribute("data-prefix") || "";
+          var fmt = function (v) {
+            return pre + v.toLocaleString("en-US", { minimumFractionDigits: dec, maximumFractionDigits: dec }) + suf;
+          };
+          if (reduce) { el.textContent = fmt(to); return; }
+          var t0 = performance.now(), dur = 900;
+          (function step(t) {
+            var p = Math.min(1, (t - t0) / dur);
+            el.textContent = fmt(to * (1 - Math.pow(1 - p, 3)));
+            if (p < 1) requestAnimationFrame(step);
+            else el.textContent = fmt(to);
+          })(t0);
+        }
+
+        // Generic chart helpers (Chart.js, themed by hark-charts.js). Spec JSON on the canvas:
+        // {"src": data block id, "x": csv field, "y": [csv fields], "names": [...], "short": [...],
+        //  "h": horizontal, "stack": stacked, "unit": "%", "scale": n, "dec": n, "hi": index, "xfmt": "month"}
+        var PAL = ["var(--x-teal)", "var(--x-amber)", "var(--x-slate)", "var(--chart-4)", "var(--chart-5)"];
+        var MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        function series(s) {
+          var d = Hark.data(s.src);
+          if (!Array.isArray(d)) return d;
+          var labels = s.short || d.map(function (r) {
+            var v = String(r[s.x]);
+            return s.xfmt === "month" ? MON[+v.slice(5, 7) - 1] + " ’" + v.slice(2, 4) : v;
+          });
+          return {
+            labels: labels,
+            sets: s.y.map(function (f, i) {
+              return { label: (s.names || [])[i] || f, data: d.map(function (r) { return +(r[f] * (s.scale || 1)).toFixed(s.dec == null ? 2 : s.dec); }) };
+            })
+          };
+        }
+        function fmt(s) {
+          return function (v) { return (+v).toLocaleString("en-US", { maximumFractionDigits: s.dec == null ? 1 : s.dec }) + (s.unit || ""); };
+        }
+        function makeChart(el, kind) {
+          var s = JSON.parse(el.getAttribute("data-" + kind)), d = series(s), f = fmt(s);
+          var line = kind === "line", many = d.sets.length > 1;
+          var ds = d.sets.map(function (set, i) {
+            var o = { label: set.label, data: set.data };
+            var col = set.color || PAL[i % PAL.length];
+            if (line) {
+              o.borderColor = col; o.pointRadius = 3; o.pointBackgroundColor = col;
+              if (!many) { o.fill = true; o.backgroundColor = Hark.wash(col, 0.18); }
+            } else if (kind === "funnel") {
+              o.backgroundColor = set.data.map(function (v, j) { return j === set.data.length - 1 ? "var(--x-amber)" : "var(--x-teal)"; });
+            } else if (s.hi != null && !many) {
+              o.backgroundColor = set.data.map(function (v, j) { return j === s.hi ? "var(--x-amber)" : "var(--x-teal)"; });
+            } else o.backgroundColor = col;
+            return o;
+          });
+          var vAxis = { ticks: { callback: f }, stacked: !!s.stack };
+          if (s.max != null) vAxis.max = s.max;
+          if (s.min != null) vAxis.min = s.min;
+          var cAxis = { stacked: !!s.stack };
+          var horiz = kind === "funnel" || s.h;
+          var labels = line ? (many ? Hark.labels.ends : false) : s.stack ? Hark.labels.inside : Hark.labels.values;
+          if (labels) labels = Object.assign({}, labels, labels === Hark.labels.ends ? {} : { formatter: f });
+          new Chart(el, {
+            type: line ? "line" : "bar",
+            data: { labels: d.labels, datasets: ds },
+            options: {
+              indexAxis: horiz ? "y" : "x",
+              scales: horiz ? { x: vAxis, y: cAxis } : { x: cAxis, y: vAxis },
+              plugins: {
+                legend: { display: many && !line },
+                datalabels: labels || { display: false },
+                tooltip: { callbacks: { label: function (c) { return (c.dataset.label ? c.dataset.label + ": " : "") + f(horiz ? c.parsed.x : c.parsed.y); } } }
+              }
+            }
+          });
+        }
+
+        var prevBtn = document.getElementById("prev"), nextBtn = document.getElementById("next");
+        function setEnds(i) { prevBtn.disabled = i === 0; nextBtn.disabled = i === slides.length - 1; }
+        setEnds(0);
+        var seen = new WeakSet();
+        function activate(sl) {
+          sl.classList.add("is-on");
+          if (seen.has(sl)) return;
+          seen.add(sl);
+          [].forEach.call(sl.querySelectorAll("[data-count]"), countUp);
+          ["bars", "line", "funnel"].forEach(function (k) {
+            [].forEach.call(sl.querySelectorAll("[data-" + k + "]"), function (el) { makeChart(el, k); });
+          });
+        }
+
+        var io = new IntersectionObserver(function (es) {
+          es.forEach(function (e) {
+            if (e.isIntersecting && (e.intersectionRatio > 0.5 || e.intersectionRect.height > innerHeight * 0.5)) {
+              activate(e.target);
+              var i = slides.indexOf(e.target);
+              cur.textContent = i + 1;
+              prog.style.width = ((i + 1) / slides.length) * 100 + "%";
+              setEnds(i);
+            }
+          });
+        }, { threshold: [0, 0.25, 0.5, 0.75, 1] });
+        slides.forEach(function (s) { io.observe(s); });
+
+        function go(d) {
+          var i = Math.max(0, Math.min(slides.length - 1, (+cur.textContent - 1) + d));
+          slides[i].scrollIntoView({ behavior: reduce ? "auto" : "smooth" });
+        }
+        document.getElementById("next").onclick = function () { go(1); };
+        document.getElementById("prev").onclick = function () { go(-1); };
+        addEventListener("keydown", function (e) {
+          if (["ArrowRight", "ArrowDown", "PageDown", " "].indexOf(e.key) > -1) { e.preventDefault(); go(1); }
+          else if (["ArrowLeft", "ArrowUp", "PageUp"].indexOf(e.key) > -1) { e.preventDefault(); go(-1); }
+          else if (e.key === "Home") slides[0].scrollIntoView();
+          else if (e.key === "End") slides[slides.length - 1].scrollIntoView();
+        });
+        // horizontal swipe (vertical swipes are handled by scroll-snap)
+        var tx = null, ty = null;
+        deck.addEventListener("touchstart", function (e) { tx = e.touches[0].clientX; ty = e.touches[0].clientY; }, { passive: true });
+        deck.addEventListener("touchend", function (e) {
+          if (tx === null) return;
+          var dx = tx - e.changedTouches[0].clientX, dy = ty - e.changedTouches[0].clientY;
+          if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) go(dx > 0 ? 1 : -1);
+          tx = ty = null;
+        }, { passive: true });
+
+        // references: render the APA list from its markdown source
+        var src = document.getElementById("bib-src"), out = document.getElementById("bib");
+        if (src && out) {
+          var esc = function (t) { return t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); };
+          out.innerHTML = src.textContent.trim().split(/\n\s*\n/).map(function (p) {
+            var h = esc(p.trim())
+              .replace(/&lt;(https?:\/\/[^\s&]+(?:&amp;[^\s&]+)*)&gt;/g, '<a href="$1" target="_blank" rel="noopener">$1</a>')
+              .replace(/\*([^*]+)\*/g, "<em>$1</em>");
+            return "<p>" + h + "</p>";
+          }).join("");
+        }
+      })();
+    </script>
+    </div>
+  </body>
+</html>
