@@ -4,6 +4,19 @@ ZipShift Navigator is a role-aware community-resource, referral, care-coordinati
 
 The application is designed for teams that need to move from resource discovery to referral follow-up without losing privacy, auditability, accessibility, or study-specific controls. Client-facing screens, staff workflows, researcher tools, and admin controls share the same visual system and route shell.
 
+## Research presentation: Paper Walls
+
+[![Paper Walls — social determinants of health, document burden, and navigation burden](docs/paper-walls/hero-paper-wall.png)](https://mcochranca-code.github.io/zipshift-navigator/paper-walls/)
+
+**Paper Walls** is the research case behind ZipShift: the help exists, but paperwork and navigation stand between people and the services they qualify for. It is an animated, data-centered presentation that traces social determinants of health from Du Bois to today and looks at administrative burden and navigation burden through a California, Medi-Cal, and Stanislaus County lens.
+
+| | |
+| --- | --- |
+| View the presentation | [Live presentation](https://mcochranca-code.github.io/zipshift-navigator/paper-walls/) · [source folder](docs/paper-walls/) |
+| Slide deck | [Paper-Walls.pptx](docs/paper-walls/downloads/Paper-Walls.pptx) |
+| References (APA 7, 143 entries) | [PDF](docs/paper-walls/downloads/Paper-Walls-Bibliography.pdf) · [DOCX](docs/paper-walls/downloads/Paper-Walls-Bibliography.docx) |
+| Chart data | [`docs/paper-walls/data-*.csv`](docs/paper-walls/) |
+
 ## Documentation and implementation map
 
 Use this table of contents to find the architecture diagrams, API contract, migration plan, implementation code, and test coverage from the application landing page.
